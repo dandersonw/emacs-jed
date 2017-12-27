@@ -130,7 +130,7 @@
     child))
 
 (define-widget 'search-result 'group "todo"
-  :args (list 'btext 'definition-list)
+  :args (list 'btext 'definition-list 'symbol)
   :value-create 'search-result-value-create)
 
 (defun search-result-value-create (widget)
@@ -183,8 +183,8 @@
   (widget-setup))
 
 (defun kanjidic-search (query)
-  (list (list query (list (concat query "1") (concat query "2")))
-        (list query (list (concat query "1") (concat query "2")))))
+  (list (list query (list (concat query "1") (concat query "2")) 'g)
+        (list query (list (concat query "1") (concat query "2")) 'p)))
 
 (kanjidic-ui-setup)
 
