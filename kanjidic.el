@@ -8,6 +8,31 @@
 
 (defvar kanjidic-result-list)
 
+(defgroup kanjidic-faces nil
+  "todo"
+  :group 'faces)
+
+(defface good-match-face '((((class color)
+                             (background dark))
+                            (:background "lime green"))
+                           (((class color)
+                             (background light))
+                            (:background "lime green"))
+                           (t nil))
+  "todo"
+  :group 'kanjidic-faces)
+
+(defface partial-match-face '((((class color)
+                                (background dark))
+                               (:background "light yellow"))
+                              (((class color)
+                                (background light))
+                               (:background "yellow"))
+                              (t nil))
+  "todo"
+  :group 'kanjidic-faces)
+
+
 (define-widget 'btext 'string "todo"
   :format "%v\n"
   :tag "btext"
@@ -35,7 +60,6 @@
   :value-create 'definition-list-value-create)
 
 (defun definition-list-value-create (widget)
-  ;; Insert all values
   (let* ((value (widget-get widget :value))
 	 (type (nth 0 (widget-get widget :args)))
          (count 0)
@@ -111,6 +135,7 @@
 
 (defun search-result-value-create (widget)
   (let ((args (widget-get widget :args))
+        (from (point))
 	(value (widget-get widget :value))
 	arg answer children)
       (setq arg (car args)
@@ -130,7 +155,10 @@
 	    value (cdr answer))
       (push (widget-create-child-value widget arg (car (car answer)))
 	    children)
-      (widget-put widget :children (nreverse children))))
+      (widget-put widget :children (nreverse children))
+      (let ((overlay (make-overlay from (point) nil t nil)))
+        (overlay-put overlay 'face 'good-match-face)
+        (overlay-put overlay 'after-string "\n"))))
 
 (defun kanjidic-ui-setup ()
   (kill-all-local-variables)
@@ -155,7 +183,8 @@
   (widget-setup))
 
 (defun kanjidic-search (query)
-  (list (list query (list (concat query "1") (concat query "2")))));'(item :value query)))
+  (list (list query (list (concat query "1") (concat query "2")))
+        (list query (list (concat query "1") (concat query "2")))))
 
 (kanjidic-ui-setup)
 
