@@ -24,7 +24,6 @@
   :tag "imm-str"
   :value-create (lambda (w) (insert (widget-value w))))
 
-
 (define-widget 'search-result-list 'editable-list "todo"
   :format "%v\n"
   :entry-format "%v")
@@ -32,7 +31,79 @@
 (define-widget 'definition-list 'editable-list "todo"
   :args (list 'definition)
   :format "%v\n"
-  :entry-format "%n %v")
+  :entry-format "%n %v"
+  :value-create 'definition-list-value-create)
+
+(defun definition-list-value-create (widget)
+  ;; Insert all values
+  (let* ((value (widget-get widget :value))
+	 (type (nth 0 (widget-get widget :args)))
+         (count 0)
+	 children)
+    (widget-put widget :value-pos (point-marker))
+    (set-marker-insertion-type (widget-get widget :value-pos) t)
+    (while value
+      (setq count (+ 1 count))
+      (let ((answer (widget-match-inline type value)))
+	(if answer
+	    (setq children (cons (definition-list-entry-create
+				  widget
+				  (if (widget-get type :inline)
+				      (car answer)
+				    (car (car answer)))
+				  t
+                                  count)
+				 children)
+		  value (cdr answer))
+	  (setq value nil))))
+    (widget-put widget :children (nreverse children))))
+
+
+(defun definition-list-entry-create (widget value conv idx)
+  (let ((type (nth 0 (widget-get widget :args)))
+	child delete insert)
+    (widget-specify-insert
+     (save-excursion
+       (and (widget-get widget :indent)
+	    (insert-char ?\s (widget-get widget :indent)))
+       (insert (widget-get widget :entry-format)))
+     ;; Parse % escapes in format.
+     (while (re-search-forward "%\\(.\\)" nil t)
+       (let ((escape (char-after (match-beginning 1))))
+	 (delete-char -2)
+	 (cond ((eq escape ?%)
+		(insert ?%))
+	       ((eq escape ?i)
+		(setq insert (apply 'widget-create-child-and-convert
+				    widget 'insert-button
+				    (widget-get widget :insert-button-args))))
+	       ((eq escape ?d)
+		(setq delete (apply 'widget-create-child-and-convert
+				    widget 'delete-button
+				    (widget-get widget :delete-button-args))))
+	       ((eq escape ?v)
+		(if conv
+		    (setq child (widget-create-child-value
+				 widget type value))
+		  (setq child (widget-create-child-value
+			       widget type (widget-default-get type)))))
+               ((eq escape ?n)
+                (insert (format "%d. " idx)))
+	       (t
+		(error "Unknown escape `%c'" escape)))))
+     (let ((buttons (widget-get widget :buttons)))
+       (if insert (push insert buttons))
+       (if delete (push delete buttons))
+       (widget-put widget :buttons buttons))
+     (let ((entry-from (point-min-marker))
+	   (entry-to (point-max-marker)))
+       (set-marker-insertion-type entry-from t)
+       (set-marker-insertion-type entry-to nil)
+       (widget-put child :entry-from entry-from)
+       (widget-put child :entry-to entry-to)))
+    (if insert (widget-put insert :widget child))
+    (if delete (widget-put delete :widget child))
+    child))
 
 (define-widget 'search-result 'group "todo"
   :args (list 'btext 'definition-list)
