@@ -1,12 +1,13 @@
 (require 'widget)
 (require 'cl-lib)
 (require 'wid-edit)
-; (require 'emacsql-sqlite)
+(require 'emacsql-sqlite)
 
 (switch-to-buffer "*kanjidic*")
 (buffer-disable-undo "*kanjidic*")
 
 (defvar kanjidic-result-list)
+(defvar kanjidic-db (emacsql-sqlite "~/workspace/KanjiDatabaseCopy.sqlite"))
 
 (defgroup kanjidic-faces nil
   "todo"
@@ -24,10 +25,10 @@
 
 (defface partial-match-face '((((class color)
                                 (background dark))
-                               (:background "light yellow"))
+                               (:background "light gray"))
                               (((class color)
                                 (background light))
-                               (:background "yellow"))
+                               (:background "light gray"))
                               (t nil))
   "todo"
   :group 'kanjidic-faces)
@@ -130,7 +131,7 @@
     child))
 
 (define-widget 'search-result 'group "todo"
-  :args (list 'btext 'definition-list 'symbol)
+  :args (list 'btext 'definition-list 'symbol 'string)
   :value-create 'search-result-value-create)
 
 (defun search-result-value-create (widget)
@@ -152,13 +153,22 @@
       (setq arg (car args)
 	    args (cdr args)
 	    answer (widget-match-inline arg value)
+            definition-list (car (car answer))
 	    value (cdr answer))
-      (push (widget-create-child-value widget arg (car (car answer)))
+      (push (widget-create-child-value widget arg definition-list)
 	    children)
       (widget-put widget :children (nreverse children))
+      (setq arg (car args)
+	    args (cdr args)
+	    answer (widget-match-inline arg value)
+            match-symbol (car (car answer))
+	    value (cdr answer))
       (let ((overlay (make-overlay from (point) nil t nil)))
-        (overlay-put overlay 'face 'good-match-face)
-        (overlay-put overlay 'after-string "\n"))))
+        (overlay-put overlay 'face (search-result-face-for-match match-symbol)))))
+
+(defun search-result-face-for-match (sym)
+  (cond ((eq sym 'g) 'good-match-face)
+        ((eq sym 'p) 'partial-match-face)))
 
 (defun kanjidic-ui-setup ()
   (kill-all-local-variables)
@@ -182,9 +192,36 @@
     (widget-value-set kanjidic-result-list (kanjidic-search txt)))
   (widget-setup))
 
+;; (defun kanjidic-search (query)
+;;   (list (list query (list (concat query "1") (concat query "2")) 'g)
+;;         (list query (list (concat query "1") (concat query "2")) 'p)))
+
 (defun kanjidic-search (query)
-  (list (list query (list (concat query "1") (concat query "2")) 'g)
-        (list query (list (concat query "1") (concat query "2")) 'p)))
+  (let* ((results (emacsql kanjidic-db [:select [VocabSet:ID
+                                                 VocabSet:KanjiWriting
+                                                 VocabSet:KanaWriting
+                                                 VocabMeaningSet:Meaning]
+                                        :from VocabSet
+                                        :join VocabEntityVocabMeaning
+                                        :on (= VocabSet:ID VocabEntityVocabMeaning:VocabEntity_ID)
+                                        :join VocabMeaningSet
+                                        :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID)
+                                        :where (like VocabSet:KanaWriting "あ")
+                                        :limit 100]))
+         (by-id (-group-by 'car results)))
+;    (print by-id)
+    (mapcar 'collect-search-result by-id)))
+
+(defun collect-search-result (id-group)
+  (let* ((id (car id-group))
+         (group (cdr id-group))
+         (kanji (cadar group))
+         (kana (caddar group))
+         (btext (or kanji kana))
+         (definitions (-map 'cadddr group)))
+    (list btext definitions 'g kana)))
+
 
 (kanjidic-ui-setup)
 
+;; (emacsql kanjidic-db [:select [VocabSet:ID VocabSet:KanjiWriting VocabSet:KanaWriting VocabMeaningSet:Meaning] :from VocabSet :join VocabEntityVocabMeaning  :on (= VocabSet:ID VocabEntityVocabMeaning:VocabEntity_ID) :join VocabMeaningSet :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID) :where (like VocabSet:KanaWriting "あ") :limit 100])
