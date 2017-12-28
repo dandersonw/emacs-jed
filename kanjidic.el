@@ -34,9 +34,9 @@
   :group 'kanjidic-faces)
 
 
-(define-widget 'btext 'string "todo"
+(define-widget 'display-text 'string "todo"
   :format "%v\n"
-  :tag "btext"
+  :tag "display-text"
   :indent 10
   :value-create (lambda (w) (insert (widget-value w))))
 
@@ -131,38 +131,29 @@
     child))
 
 (define-widget 'search-result 'group "todo"
-  :args (list 'btext 'definition-list 'symbol 'string)
+  ;     (list display text / definitions / match-quality / kana)
+  :args (list 'display-text 'definition-list 'symbol 'string)
   :value-create 'search-result-value-create)
+
+(defmacro consume-widget-group-element (widget args value store)
+  `(setq arg (car ,args)
+         ,(intern (concat (symbol-name store) "-type")) arg
+         ,args (cdr ,args)
+         answer (widget-match-inline arg ,value)
+         ,store (car (car answer))
+         ,value (cdr answer)))
 
 (defun search-result-value-create (widget)
   (let ((args (widget-get widget :args))
         (from (point))
 	(value (widget-get widget :value))
-	arg answer children)
-      (setq arg (car args)
-	    args (cdr args)
-	    answer (widget-match-inline arg value)
-            btext (car (car answer))
-	    value (cdr answer))
-      (and (eq (preceding-char) ?\n)
-	   (widget-get widget :indent)
-	   (insert-char ?\s (widget-get widget :indent)))
-      (push (widget-create-child-value widget arg btext)
-	    children)
-;      (insert-char ?\t 2)
-      (setq arg (car args)
-	    args (cdr args)
-	    answer (widget-match-inline arg value)
-            definition-list (car (car answer))
-	    value (cdr answer))
-      (push (widget-create-child-value widget arg definition-list)
-	    children)
+	children)
+      (consume-widget-group-element widget args value display-text)
+      (consume-widget-group-element widget args value definition-list)
+      (consume-widget-group-element widget args value match-symbol)
+      (push (widget-create-child-value widget display-text-type display-text) children)
+      (push (widget-create-child-value widget definition-list-type definition-list) children)
       (widget-put widget :children (nreverse children))
-      (setq arg (car args)
-	    args (cdr args)
-	    answer (widget-match-inline arg value)
-            match-symbol (car (car answer))
-	    value (cdr answer))
       (let ((overlay (make-overlay from (point) nil t nil)))
         (overlay-put overlay 'face (search-result-face-for-match match-symbol)))))
 
@@ -206,7 +197,7 @@
                           :join VocabMeaningSet
                           :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID)
                           :where (like VocabSet:KanaWriting $R0)
-                          :limit 100])
+                          :limit 1000])
 
 (defun kanjidic-search (query)
   (let* ((templated-query (kanjidic-templating exact-kana-match 'vconcat query))
@@ -219,9 +210,9 @@
          (group (cdr id-group))
          (kanji (cadar group))
          (kana (caddar group))
-         (btext (or kanji kana))
+         (display-text (or kanji kana))
          (definitions (-map 'cadddr group)))
-    (list btext definitions 'g kana)))
+    (list display-text definitions 'g kana)))
 
 (cl-defun kanjidic-templating (query typef &rest strings)
   (funcall typef (-map (lambda (token)
