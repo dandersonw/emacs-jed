@@ -196,21 +196,23 @@
 ;;   (list (list query (list (concat query "1") (concat query "2")) 'g)
 ;;         (list query (list (concat query "1") (concat query "2")) 'p)))
 
+(defvar exact-kana-match [:select [VocabSet:ID
+                                   VocabSet:KanjiWriting
+                                   VocabSet:KanaWriting
+                                   VocabMeaningSet:Meaning]
+                          :from VocabSet
+                          :join VocabEntityVocabMeaning
+                          :on (= VocabSet:ID VocabEntityVocabMeaning:VocabEntity_ID)
+                          :join VocabMeaningSet
+                          :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID)
+                          :where (like VocabSet:KanaWriting $R0)
+                          :limit 100])
+
 (defun kanjidic-search (query)
-  (let* ((results (emacsql kanjidic-db [:select [VocabSet:ID
-                                                 VocabSet:KanjiWriting
-                                                 VocabSet:KanaWriting
-                                                 VocabMeaningSet:Meaning]
-                                        :from VocabSet
-                                        :join VocabEntityVocabMeaning
-                                        :on (= VocabSet:ID VocabEntityVocabMeaning:VocabEntity_ID)
-                                        :join VocabMeaningSet
-                                        :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID)
-                                        :where (like VocabSet:KanaWriting "あ")
-                                        :limit 100]))
+  (let* ((templated-query (kanjidic-templating exact-kana-match 'vconcat query))
+         (results (emacsql kanjidic-db templated-query))
          (by-id (-group-by 'car results)))
-;    (print by-id)
-    (mapcar 'collect-search-result by-id)))
+    (-map 'collect-search-result by-id)))
 
 (defun collect-search-result (id-group)
   (let* ((id (car id-group))
@@ -221,7 +223,22 @@
          (definitions (-map 'cadddr group)))
     (list btext definitions 'g kana)))
 
+(cl-defun kanjidic-templating (query typef &rest strings)
+  (funcall typef (-map (lambda (token)
+                   (cond ((symbolp token)
+                          (let* ((name (symbol-name token))
+                                 (match (string-match-p "^\\$[R][0-9]+$" name)))
+                            (if match
+                                (let ((type (substring name 1 2))
+                                      (idx (string-to-int (substring name 2))))
+                                  (cond ((equal type "R")
+                                         (eval (list 'quote (nth idx (car strings)))))
+                                        (t (error "Definitely should not happen"))))
+                              token)))
+                         ((stringp token) token)
+                         ((vectorp token) (kanjidic-templating token 'vconcat strings))
+                         ((sequencep token) (kanjidic-templating token 'identity strings))
+                         (t token)))
+                 query)))
 
 (kanjidic-ui-setup)
-
-;; (emacsql kanjidic-db [:select [VocabSet:ID VocabSet:KanjiWriting VocabSet:KanaWriting VocabMeaningSet:Meaning] :from VocabSet :join VocabEntityVocabMeaning  :on (= VocabSet:ID VocabEntityVocabMeaning:VocabEntity_ID) :join VocabMeaningSet :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID) :where (like VocabSet:KanaWriting "あ") :limit 100])
