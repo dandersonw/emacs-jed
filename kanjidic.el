@@ -19,7 +19,7 @@
                             (:background "lime green"))
                            (((class color)
                              (background light))
-                            (:background "lime green"))
+                            (:background "light green"))
                            (t nil))
   "todo"
   :group 'kanjidic-faces)
@@ -39,18 +39,29 @@
                                (:background "yellow"))
                               (((class color)
                                 (background light))
-                               (:background "yellow"))
+                               (:background "yellow"
+                                            :box t))
                               (t nil))
   "todo"
   :group 'kanjidic-faces)
 
+(defface display-text-face '((t (:height 1.0)))
+  "todo"
+  :group 'kanjidic-faces)
+
+(defface search-result-separator-face '((t (:height .1 :background "dark gray")))
+  "todo"
+  :group 'kanjidic-faces)
+
+
+(defvar display-text-width 15)
 
 (define-widget 'display-text 'string "todo"
   :format "%v%p"
   :tag "display-text"
-  :indent 10
+  :indent display-text-width
   :format-handler 'pad-handler
-  :value-create (lambda (w) (insert (widget-value w))))
+  :value-create 'display-text-value-create)
 
 (define-widget 'definition 'string "todo"
   :format "%v\n"
@@ -78,7 +89,8 @@
 
 (define-widget 'definition-list 'editable-list "todo"
   :args (list 'definition)
-  :format "%v\n"
+  :indent display-text-width
+  :format "%v"
   :entry-format "%n %v"
   :value-create 'definition-list-value-create)
 
@@ -86,6 +98,14 @@
   ;     (list display text / definitions / match-quality / kana)
   :args (list 'display-text 'badge-list 'definition-list 'symbol 'string)
   :value-create 'search-result-value-create)
+
+(defun display-text-value-create (widget)
+  (let ((text (widget-get widget :value))
+        (from (point)))
+    (insert text)
+    (let ((overlay (make-overlay from (point) nil t nil)))
+      (overlay-put overlay 'priority 2)
+      (overlay-put overlay 'face 'display-text-face))))
 
 (defun definition-list-value-create (widget)
   (let* ((value (widget-get widget :value))
@@ -108,7 +128,12 @@
 				 children)
 		  value (cdr answer))
 	  (setq value nil))))
-    (widget-put widget :children (nreverse children))))
+    (widget-put widget :children (nreverse children))
+    (let* ((from (point))
+           (to (prog2 (insert "\n\n") (point)))
+           (overlay (make-overlay from (point) nil t nil)))
+      (overlay-put overlay 'priority 2)
+      (overlay-put overlay 'face 'search-result-separator-face))))
 
 (defun definition-list-entry-create (widget value conv idx)
   (let ((type (nth 0 (widget-get widget :args)))
@@ -202,7 +227,7 @@
     (error "Bad escape"))
   (let* ((txt (widget-get widget :value))
         (len (length txt))
-        (padlen (- 10 len)))
+        (padlen (- display-text-width len)))
     (when (> padlen 0)
       (insert (make-string padlen ? )))))
 
@@ -218,7 +243,6 @@
                  :action 'kanjidic-handle-search)
   (widget-insert (concat "\n" (make-string 50 ?-) "\n"))
   (setq kanjidic-result-list (widget-create 'search-result-list
-                                            :entry-format "%v"
                                             'search-result))
   (use-local-map widget-keymap)
   (widget-setup))
