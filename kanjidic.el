@@ -35,10 +35,10 @@
 
 
 (define-widget 'display-text 'string "todo"
-  :format "%v"
+  :format "%v%p"
   :tag "display-text"
   :indent 10
-;  :format-handler 'pad-handler
+  :format-handler 'pad-handler
   :value-create (lambda (w) (insert (widget-value w))))
 
 (define-widget 'definition 'string "todo"
