@@ -232,7 +232,8 @@
                               VocabSet:KanjiWriting
                               VocabSet:KanaWriting
                               VocabMeaningSet:Meaning
-                              VocabSet:FrequencyRank])
+                              VocabSet:FrequencyRank
+                              VocabSet:IsCommon])
 
 (defvar exact-kana-match `[:select ,search-result-fields
                           :from VocabSet
@@ -259,13 +260,19 @@
     (list display-text (create-badges (car group)) definitions 'g kana)))
 
 (defun create-badges (result)
-    (-filter 'identity (funcall (-juxt 'frequency-badge) result)))
+  (-filter 'identity (funcall (-juxt 'common-badge
+                                     'frequency-badge)
+                              result)))
 
 (defun frequency-badge (result)
   (let ((frequency-rank (nth 4 result)))
     (and frequency-rank
-         (list (format "W %dth most used" frequency-rank) 'badge-face))))
+         (list (format " W %dth most used " frequency-rank) 'badge-face))))
 
+(defun common-badge (result)
+  (let ((is-common (= 1 (nth 5 result))))
+    (and is-common
+         (list " 本 Common " 'badge-face))))
 
 (cl-defun kanjidic-templating (query typef &rest strings)
   (funcall typef (-map (lambda (token)
