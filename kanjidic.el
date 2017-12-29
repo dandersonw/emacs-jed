@@ -2,6 +2,7 @@
 (require 'cl-lib)
 (require 'wid-edit)
 (require 'emacsql-sqlite)
+(require 'dash-functional)
 
 (switch-to-buffer "*kanjidic*")
 (buffer-disable-undo "*kanjidic*")
@@ -29,6 +30,16 @@
                               (((class color)
                                 (background light))
                                (:background "light gray"))
+                              (t nil))
+  "todo"
+  :group 'kanjidic-faces)
+
+(defface badge-face '((((class color)
+                                (background dark))
+                               (:background "yellow"))
+                              (((class color)
+                                (background light))
+                               (:background "yellow"))
                               (t nil))
   "todo"
   :group 'kanjidic-faces)
@@ -155,7 +166,8 @@
     (push (widget-create-child-value widget text-type text) children)
     (widget-put widget :children (nreverse children))
     (let ((overlay (make-overlay from (point) nil t nil)))
-      (overlay-put overlay 'face 'partial-match-face))))
+      (overlay-put overlay 'priority 2)
+      (overlay-put overlay 'face facesym))))
 
 (defmacro consume-widget-group-element (widget args value store)
   `(setq arg (car ,args)
@@ -247,8 +259,13 @@
     (list display-text (create-badges (car group)) definitions 'g kana)))
 
 (defun create-badges (result)
+    (-filter 'identity (funcall (-juxt 'frequency-badge) result)))
+
+(defun frequency-badge (result)
   (let ((frequency-rank (nth 4 result)))
-    nil))
+    (and frequency-rank
+         (list (format "W %dth most used" frequency-rank) 'badge-face))))
+
 
 (cl-defun kanjidic-templating (query typef &rest strings)
   (funcall typef (-map (lambda (token)
