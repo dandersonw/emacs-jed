@@ -35,15 +35,26 @@
 
 
 (define-widget 'display-text 'string "todo"
-  :format "%v\n"
+  :format "%v"
   :tag "display-text"
   :indent 10
+;  :format-handler 'pad-handler
   :value-create (lambda (w) (insert (widget-value w))))
 
 (define-widget 'definition 'string "todo"
   :format "%v\n"
   :tag "def"
   :value-create (lambda (w) (insert (widget-value w))))
+
+(define-widget 'badge 'group "todo"
+  :args (list 'imm-str 'symbol)
+  :value-create 'badge-value-create)
+
+(define-widget 'badge-list 'editable-list "todo"
+  :args (list 'badge)
+  :indent 1
+  :format "%v\n"
+  :entry-format "%v")
 
 (define-widget 'imm-str 'string "todo"
   :format "%v"
@@ -59,6 +70,11 @@
   :format "%v\n"
   :entry-format "%n %v"
   :value-create 'definition-list-value-create)
+
+(define-widget 'search-result 'group "todo"
+  ;     (list display text / definitions / match-quality / kana)
+  :args (list 'display-text 'badge-list 'definition-list 'symbol 'string)
+  :value-create 'search-result-value-create)
 
 (defun definition-list-value-create (widget)
   (let* ((value (widget-get widget :value))
@@ -82,7 +98,6 @@
 		  value (cdr answer))
 	  (setq value nil))))
     (widget-put widget :children (nreverse children))))
-
 
 (defun definition-list-entry-create (widget value conv idx)
   (let ((type (nth 0 (widget-get widget :args)))
@@ -130,10 +145,17 @@
     (if delete (widget-put delete :widget child))
     child))
 
-(define-widget 'search-result 'group "todo"
-  ;     (list display text / definitions / match-quality / kana)
-  :args (list 'display-text 'definition-list 'symbol 'string)
-  :value-create 'search-result-value-create)
+(defun badge-value-create (widget)
+  (let ((args (widget-get widget :args))
+        (from (point))
+	(value (widget-get widget :value))
+        children)
+    (consume-widget-group-element widget args value text)
+    (consume-widget-group-element widget args value facesym)
+    (push (widget-create-child-value widget text-type text) children)
+    (widget-put widget :children (nreverse children))
+    (let ((overlay (make-overlay from (point) nil t nil)))
+      (overlay-put overlay 'face 'partial-match-face))))
 
 (defmacro consume-widget-group-element (widget args value store)
   `(setq arg (car ,args)
@@ -148,18 +170,29 @@
         (from (point))
 	(value (widget-get widget :value))
 	children)
-      (consume-widget-group-element widget args value display-text)
-      (consume-widget-group-element widget args value definition-list)
-      (consume-widget-group-element widget args value match-symbol)
-      (push (widget-create-child-value widget display-text-type display-text) children)
-      (push (widget-create-child-value widget definition-list-type definition-list) children)
-      (widget-put widget :children (nreverse children))
-      (let ((overlay (make-overlay from (point) nil t nil)))
-        (overlay-put overlay 'face (search-result-face-for-match match-symbol)))))
+    (consume-widget-group-element widget args value display-text)
+    (consume-widget-group-element widget args value badge-list)
+    (consume-widget-group-element widget args value definition-list)
+    (consume-widget-group-element widget args value match-symbol)
+    (push (widget-create-child-value widget display-text-type display-text) children)
+    (push (widget-create-child-value widget badge-list-type badge-list) children)
+    (push (widget-create-child-value widget definition-list-type definition-list) children)
+    (widget-put widget :children (nreverse children))
+    (let ((overlay (make-overlay from (point) nil t nil)))
+      (overlay-put overlay 'face (search-result-face-for-match match-symbol)))))
 
 (defun search-result-face-for-match (sym)
   (cond ((eq sym 'g) 'good-match-face)
         ((eq sym 'p) 'partial-match-face)))
+
+(defun pad-handler (widget c)
+  (unless (equal c ?p)
+    (error "Bad escape"))
+  (let* ((txt (widget-get widget :value))
+        (len (length txt))
+        (padlen (- 10 len)))
+    (when (> padlen 0)
+      (insert (make-string padlen ? )))))
 
 (defun kanjidic-ui-setup ()
   (kill-all-local-variables)
@@ -212,7 +245,7 @@
          (kana (caddar group))
          (display-text (or kanji kana))
          (definitions (-map 'cadddr group)))
-    (list display-text definitions 'g kana)))
+    (list display-text (list (list "badge1" 'c) (list "badge2" 'c)) definitions 'g kana)))
 
 (cl-defun kanjidic-templating (query typef &rest strings)
   (funcall typef (-map (lambda (token)
