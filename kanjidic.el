@@ -216,25 +216,24 @@
     (widget-value-set kanjidic-result-list (kanjidic-search txt)))
   (widget-setup))
 
-;; (defun kanjidic-search (query)
-;;   (list (list query (list (concat query "1") (concat query "2")) 'g)
-;;         (list query (list (concat query "1") (concat query "2")) 'p)))
+(defvar search-result-fields [VocabSet:ID
+                              VocabSet:KanjiWriting
+                              VocabSet:KanaWriting
+                              VocabMeaningSet:Meaning
+                              VocabSet:FrequencyRank])
 
-(defvar exact-kana-match [:select [VocabSet:ID
-                                   VocabSet:KanjiWriting
-                                   VocabSet:KanaWriting
-                                   VocabMeaningSet:Meaning]
+(defvar exact-kana-match `[:select ,search-result-fields
                           :from VocabSet
                           :join VocabEntityVocabMeaning
                           :on (= VocabSet:ID VocabEntityVocabMeaning:VocabEntity_ID)
                           :join VocabMeaningSet
                           :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID)
                           :where (like VocabSet:KanaWriting $R0)
-                          :limit 1000])
+                          :limit $s1])
 
 (defun kanjidic-search (query)
   (let* ((templated-query (kanjidic-templating exact-kana-match 'vconcat query))
-         (results (emacsql kanjidic-db templated-query))
+         (results (emacsql kanjidic-db templated-query 1000))
          (by-id (-group-by 'car results)))
     (-map 'collect-search-result by-id)))
 
@@ -245,7 +244,11 @@
          (kana (caddar group))
          (display-text (or kanji kana))
          (definitions (-map 'cadddr group)))
-    (list display-text (list (list "badge1" 'c) (list "badge2" 'c)) definitions 'g kana)))
+    (list display-text (create-badges (car group)) definitions 'g kana)))
+
+(defun create-badges (result)
+  (let ((frequency-rank (nth 4 result)))
+    nil))
 
 (cl-defun kanjidic-templating (query typef &rest strings)
   (funcall typef (-map (lambda (token)
@@ -255,13 +258,12 @@
                             (if match
                                 (let ((type (substring name 1 2))
                                       (idx (string-to-int (substring name 2))))
-                                  (cond ((equal type "R")
-                                         (eval (list 'quote (nth idx (car strings)))))
+                                  (cond ((equal type "R") (nth idx strings))
                                         (t (error "Definitely should not happen"))))
                               token)))
                          ((stringp token) token)
-                         ((vectorp token) (kanjidic-templating token 'vconcat strings))
-                         ((sequencep token) (kanjidic-templating token 'identity strings))
+                         ((vectorp token) (eval `(kanjidic-templating token 'vconcat ,@strings)))
+                         ((sequencep token) (eval `(kanjidic-templating token 'identity ,@strings)))
                          (t token)))
                  query)))
 
