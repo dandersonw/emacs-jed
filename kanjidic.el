@@ -53,6 +53,9 @@
   "todo"
   :group 'kanjidic-faces)
 
+(defface search-result-separator-face-2 '((t (:height .1)))
+  "todo"
+  :group 'kanjidic-faces)
 
 (defvar display-text-width 15)
 
@@ -128,12 +131,7 @@
 				 children)
 		  value (cdr answer))
 	  (setq value nil))))
-    (widget-put widget :children (nreverse children))
-    (let* ((from (point))
-           (to (prog2 (insert "\n\n") (point)))
-           (overlay (make-overlay from (point) nil t nil)))
-      (overlay-put overlay 'priority 2)
-      (overlay-put overlay 'face 'search-result-separator-face))))
+    (widget-put widget :children (nreverse children))))
 
 (defun definition-list-entry-create (widget value conv idx)
   (let ((type (nth 0 (widget-get widget :args)))
@@ -202,6 +200,13 @@
          ,store (car (car answer))
          ,value (cdr answer)))
 
+(defun search-result-separator-line (face)
+  (let* ((from (point))
+         (to (prog2 (insert "\n") (point)))
+         (overlay (make-overlay from (point) nil t nil)))
+    (overlay-put overlay 'priority 2)
+    (overlay-put overlay 'face face)))
+
 (defun search-result-value-create (widget)
   (let ((args (widget-get widget :args))
         (from (point))
@@ -211,12 +216,15 @@
     (consume-widget-group-element widget args value badge-list)
     (consume-widget-group-element widget args value definition-list)
     (consume-widget-group-element widget args value match-symbol)
+    (search-result-separator-line 'search-result-separator-face-2)
     (push (widget-create-child-value widget display-text-type display-text) children)
     (push (widget-create-child-value widget badge-list-type badge-list) children)
     (push (widget-create-child-value widget definition-list-type definition-list) children)
     (widget-put widget :children (nreverse children))
+    (search-result-separator-line 'search-result-separator-face-2)
     (let ((overlay (make-overlay from (point) nil t nil)))
-      (overlay-put overlay 'face (search-result-face-for-match match-symbol)))))
+      (overlay-put overlay 'face (search-result-face-for-match match-symbol)))
+        (search-result-separator-line 'search-result-separator-face)))
 
 (defun search-result-face-for-match (sym)
   (cond ((eq sym 'g) 'good-match-face)
