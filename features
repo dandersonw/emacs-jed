@@ -2,3 +2,4 @@ exact-reading 3.0
 reading 1.0
 extra-reading-len -0.5
 prefix-reading 0.0
+is-common 0.5

@@ -14,7 +14,7 @@
   "todo"
   :group 'faces)
 
-(defface good-match-face '((((class color)
+(defface common-match-face '((((class color)
                              (background dark))
                             (:background "lime green"))
                            (((class color)
@@ -24,7 +24,7 @@
   "todo"
   :group 'kanjidic-faces)
 
-(defface partial-match-face '((((class color)
+(defface uncommon-match-face '((((class color)
                                 (background dark))
                                (:background "light gray"))
                               (((class color)
@@ -282,7 +282,8 @@
                               VocabSet:KanaWriting
                               VocabMeaningSet:Meaning
                               VocabSet:FrequencyRank
-                              VocabSet:IsCommon])
+                              VocabSet:IsCommon
+                              VocabSet:WikiRank])
 
 (defvar exact-kana-match-cond `(like VocabSet:KanaWriting $R0))
 
@@ -296,70 +297,53 @@
                                   :limit 100])
 (defvar exact-kana-match-query (kanjidic-templating kanjidic-query-template exact-kana-match-cond))
 
-(defclass raw-search-result ()
-  ((vocab-id :initarg :vocab-id
-             :type integer)
-   (kanji-form :initarg :kanji-form
-               :type (or null string))
-   (reading :initarg :reading
-            :type string
-            :custom string)
-   (definitions :initarg :definitions
-     :type list
-     :custom list)
-   (frequency-rank :initarg :frequency-rank
-                   :type (or null integer))
-   (is-common :initarg :is-common
-              :type boolean)))
+(defclass kanjidic-search-result ()
+           ((vocab-id :initarg :vocab-id
+                      :type integer)
+            (kanji-form :initarg :kanji-form
+                        :type (or null string))
+            (reading :initarg :reading
+                     :type string
+                     :custom string)
+            (definitions :initarg :definitions
+              :type list
+              :custom list)
+            (frequency-rank :initarg :frequency-rank
+                            :type (or null integer))
+            (is-common :initarg :is-common
+                       :type boolean)
+            (wiki-rank :initarg :wiki-rank
+                       :type (or null integer))
+            (ranking-features :initarg :ranking-features
+                              :type list
+                              :custom list)
+            (score :initarg :score
+                   :type float)))
 
-(defclass scored-search-result (raw-search-result)
-  ((score :initarg :score
-         :type float)))
-
-(defclass featurized-search-result (raw-search-result)
-  ((ranking-features :initarg :ranking-features
-                    :type list
-                    :custom list)))
-
-(defmethod sr-to-widget-data ((sr raw-search-result))
+(defmethod sr-to-widget-data ((sr kanjidic-search-result))
   (let ((display-text (or (oref sr :kanji-form) (oref sr :reading)))
         (badges (create-badges sr)))
     (list display-text badges (oref sr :definitions) (determine-sr-face sr) (oref sr :reading))))
 
+(defmethod sr-add-feature ((sr kanjidic-search-result) feature)
+  (oset sr :ranking-features (cons feature (oref sr :ranking-features))))
+
 (defun determine-sr-face (search-result)
-  'good-match-face)
-
-(defmethod featurized-sr-from-raw ((sr raw-search-result) features)
-  (featurized-search-result :vocab-id (oref sr :vocab-id)
-                            :kanji-form (oref sr :kanji-form)
-                            :reading (oref sr :reading)
-                            :definitions (oref sr :definitions)
-                            :frequency-rank (oref sr :frequency-rank)
-                            :is-common (oref sr :is-common)
-                            :ranking-features features))
-
-(defmethod scored-search-result-from-other ((sr raw-search-result) score)
-  (scored-search-result :vocab-id (oref sr :vocab-id)
-                        :kanji-form (oref sr :kanji-form)
-                        :reading (oref sr :reading)
-                        :definitions (oref sr :definitions)
-                        :frequency-rank (oref sr :frequency-rank)
-                        :is-common (oref sr :is-common)
-                        :score score))
+  (if (oref search-result :is-common)
+      'common-match-face
+    'uncommon-match-face))
 
 (defun kanjidic-search (reading-query)
   (let* ((reading-results (kanjidic-search-reading reading-query))
          (all-results (append reading-results))
-         (featurized-results (kanjidic-combine-queries all-results))
+         (combined-results (kanjidic-combine-queries all-results))
+         (featurized-results (kanjidic-query-independent-featurization combined-results))
          (ranked-results (kanjidic-rank-results featurized-results)))
     ranked-results))
 
 (defun kanjidic-rank-results (featurized-results)
-  (let ((scored (-map (lambda (sr)
-                       (let ((score (kanjidic-score-result sr)))
-                         (scored-search-result-from-other sr score)))
-                       featurized-results)))
-    (--sort (> (oref it :score) (oref other :score)) scored)))
+  (-each featurized-results (lambda (r) (oset r :score (kanjidic-score-result r))))
+  (--sort (> (oref it :score) (oref other :score)) featurized-results))
 
 (defvar kanjidic-feature-file "./features")
 
@@ -377,6 +361,11 @@
 (defvar kanjidic-feature-values (kanjidic-features-from-file))
 
 (setq kanjidic-feature-values (kanjidic-features-from-file))
+
+(defun kanjidic-query-independent-featurization (results)
+  (-each results (lambda (r)
+                   (when (oref r :is-common) (sr-add-feature 'is-common))))
+  results)
 
 (defun kanjidic-score-result (featurized-result)
   (-sum (-map (lambda (f)
@@ -403,23 +392,20 @@
                     reading-query))
          (exact-results (kanjidic-search-single-query
                          (kanjidic-templating exact-kana-match-query reading))))
-    (setq exact-results (-map (lambda (r)
-                                (featurized-sr-from-raw r '(exact-reading reading)))
-                              exact-results))
+    (-each exact-results (lambda (r) (oset r :ranking-features '(exact-reading reading))))
     (append exact-results
             (and do-prefix-search (kanjidic-search-reading-prefix reading)))))
 
-(defun kanjidic-search-reading-prefix (reading-query)
+(defun kanjidic-search-reading-prefix (reading-prefix)
   (let ((results (kanjidic-search-single-query
-                  (kanjidic-templating exact-kana-match-query (concat reading-query "%"))))
-        (q-len (length reading-query)))
-    (-map (lambda (r)
-            (featurized-sr-from-raw r
-                                    (list 'prefix-reading
-                                          'reading
-                                          (cons 'extra-reading-len (- (length (oref r :reading))
-                                                                      q-len)))))
-          results)))
+                  (kanjidic-templating exact-kana-match-query (concat reading-prefix "%"))))
+        (q-len (length reading-prefix)))
+    (-each results (lambda (r) (oset r :ranking-features
+                            (list 'prefix-reading
+                                  'reading
+                                  (cons 'extra-reading-len (- (length (oref r :reading))
+                                                              q-len))))))
+    results))
 
 (defun kanjidic-search-single-query (query)
   (let* ((results (emacsql kanjidic-db query))
@@ -431,26 +417,33 @@
   (let* ((example (cadr id-group))
          (definitions (-map 'cadddr (cdr id-group))))
     (pcase example
-      (`(,id ,kanji ,kana ,_ ,frequency ,is-common)
-       (raw-search-result :vocab-id id
-                          :kanji-form kanji
-                          :reading kana
-                          :definitions definitions
-                          :frequency-rank frequency
-                          :is-common (= 1 is-common))))))
+      (`(,id ,kanji ,kana ,_ ,frequency ,is-common ,wiki-rank)
+       (kanjidic-search-result :vocab-id id
+                               :kanji-form kanji
+                               :reading kana
+                               :definitions definitions
+                               :frequency-rank frequency
+                               :is-common (= 1 is-common)
+                               :wiki-rank wiki-rank)))))
 
 (defun create-badges (result)
   (-filter 'identity (funcall (-juxt 'common-badge
-                                     'frequency-badge)
+                                     'wikirank-badge)
                               result)))
 
-(defun frequency-badge (result)
-  (let ((frequency-rank (oref result :frequency-rank)))
-    (and frequency-rank
-         (list (format " W %dth most used " frequency-rank) 'badge-face))))
+(defun wikirank-badge (result)
+  (let ((wiki-rank (oref result :wiki-rank)))
+    (and wiki-rank
+         (list (format " W %dth most used " wiki-rank) 'badge-face))))
 
 (defun common-badge (result)
-  (and (oref result :is-common)
-       (list " 本 Common " 'badge-face)))
+  (let* ((freq (oref result :frequency-rank))
+         (rank (cond ((not freq) nil)
+                     ((> freq 35000) "Very Common")
+                     ((> freq 6000)  "Common")
+                     ((> freq 600)   "Unusual")
+                     ((> freq 100)   "Rare")
+                     (t nil))))
+    (and rank (list (format " 本 %s " rank) 'badge-face))))
 
 (kanjidic-ui-setup)
