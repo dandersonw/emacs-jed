@@ -1,13 +1,13 @@
-(require 'widget)
 (require 'cl-lib)
-(require 'wid-edit)
+(require 'eieio)
 (require 'emacsql-sqlite)
 (require 'dash-functional)
+(require 'widget)
+(require 'wid-edit)
 
 (switch-to-buffer "*kanjidic*")
 (buffer-disable-undo "*kanjidic*")
 
-(defvar kanjidic-result-list)
 (defvar kanjidic-db (emacsql-sqlite "~/workspace/KanjiDatabaseCopy.sqlite"))
 
 (defgroup kanjidic-faces nil
@@ -183,7 +183,7 @@
   (let ((args (widget-get widget :args))
         (from (point))
 	(value (widget-get widget :value))
-        children)
+        children text facesym)
     (consume-widget-group-element widget args value text)
     (consume-widget-group-element widget args value facesym)
     (push (widget-create-child-value widget text-type text) children)
@@ -211,11 +211,11 @@
   (let ((args (widget-get widget :args))
         (from (point))
 	(value (widget-get widget :value))
-	children)
+	children facesym display-text badge-list definition-list)
     (consume-widget-group-element widget args value display-text)
     (consume-widget-group-element widget args value badge-list)
     (consume-widget-group-element widget args value definition-list)
-    (consume-widget-group-element widget args value match-symbol)
+    (consume-widget-group-element widget args value facesym)
     (search-result-separator-line 'search-result-separator-face-2)
     (push (widget-create-child-value widget display-text-type display-text) children)
     (push (widget-create-child-value widget badge-list-type badge-list) children)
@@ -223,12 +223,8 @@
     (widget-put widget :children (nreverse children))
     (search-result-separator-line 'search-result-separator-face-2)
     (let ((overlay (make-overlay from (point) nil t nil)))
-      (overlay-put overlay 'face (search-result-face-for-match match-symbol)))
+      (overlay-put overlay 'face facesym))
         (search-result-separator-line 'search-result-separator-face)))
-
-(defun search-result-face-for-match (sym)
-  (cond ((eq sym 'g) 'good-match-face)
-        ((eq sym 'p) 'partial-match-face)))
 
 (defun pad-handler (widget c)
   (unless (equal c ?p)
@@ -241,14 +237,14 @@
 
 (defun kanjidic-ui-setup ()
   (kill-all-local-variables)
-  (make-local-variable 'kanjidic-searchbar)
+  (make-local-variable 'reading-field)
   (let ((inhibit-read-only t))
          (erase-buffer))
   (remove-overlays)
-  (widget-create 'editable-field
-                 :size 30
-                 :format "Query: %v %[Search%]"  
-                 :action 'kanjidic-handle-search)
+  (setq reading-field (widget-create 'editable-field
+                                     :size 30
+                                     :format "Reading: %v"  
+                                     :action 'kanjidic-handle-search))
   (widget-insert (concat "\n" (make-string 50 ?-) "\n"))
   (setq kanjidic-result-list (widget-create 'search-result-list
                                             'search-result))
@@ -256,57 +252,16 @@
   (widget-setup))
 
 (defun kanjidic-handle-search (a b)
-  (let ((txt (widget-value a)))
-    (widget-value-set kanjidic-result-list (kanjidic-search txt)))
+  (let* ((reading-query (widget-value reading-field))
+        (search-results (kanjidic-search reading-query))
+        (widget-data (-map 'sr-to-widget-data search-results)))
+    (widget-value-set kanjidic-result-list widget-data))
   (widget-setup))
 
-(defvar search-result-fields [VocabSet:ID
-                              VocabSet:KanjiWriting
-                              VocabSet:KanaWriting
-                              VocabMeaningSet:Meaning
-                              VocabSet:FrequencyRank
-                              VocabSet:IsCommon])
+(defun kanjidic-templating (query &rest strings)
+  (kanjidic-templating-h query 'vconcat strings))
 
-(defvar exact-kana-match `[:select ,search-result-fields
-                          :from VocabSet
-                          :join VocabEntityVocabMeaning
-                          :on (= VocabSet:ID VocabEntityVocabMeaning:VocabEntity_ID)
-                          :join VocabMeaningSet
-                          :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID)
-                          :where (like VocabSet:KanaWriting $R0)
-                          :limit $s1])
-
-(defun kanjidic-search (query)
-  (let* ((templated-query (kanjidic-templating exact-kana-match 'vconcat query))
-         (results (emacsql kanjidic-db templated-query 1000))
-         (by-id (-group-by 'car results)))
-    (-map 'collect-search-result by-id)))
-
-(defun collect-search-result (id-group)
-  (let* ((id (car id-group))
-         (group (cdr id-group))
-         (kanji (cadar group))
-         (kana (caddar group))
-         (display-text (or kanji kana))
-         (definitions (-map 'cadddr group)))
-    (list display-text (create-badges (car group)) definitions 'g kana)))
-
-(defun create-badges (result)
-  (-filter 'identity (funcall (-juxt 'common-badge
-                                     'frequency-badge)
-                              result)))
-
-(defun frequency-badge (result)
-  (let ((frequency-rank (nth 4 result)))
-    (and frequency-rank
-         (list (format " W %dth most used " frequency-rank) 'badge-face))))
-
-(defun common-badge (result)
-  (let ((is-common (= 1 (nth 5 result))))
-    (and is-common
-         (list " 本 Common " 'badge-face))))
-
-(cl-defun kanjidic-templating (query typef &rest strings)
+(defun kanjidic-templating-h (query typef strings)
   (funcall typef (-map (lambda (token)
                    (cond ((symbolp token)
                           (let* ((name (symbol-name token))
@@ -317,10 +272,167 @@
                                   (cond ((equal type "R") (nth idx strings))
                                         (t (error "Definitely should not happen"))))
                               token)))
-                         ((stringp token) token)
-                         ((vectorp token) (eval `(kanjidic-templating token 'vconcat ,@strings)))
-                         ((sequencep token) (eval `(kanjidic-templating token 'identity ,@strings)))
+                         ((vectorp token) (kanjidic-templating-h token 'vconcat strings))
+                         ((listp token) (kanjidic-templating-h token 'identity strings))
                          (t token)))
                  query)))
+
+(defvar search-result-fields [VocabSet:ID
+                              VocabSet:KanjiWriting
+                              VocabSet:KanaWriting
+                              VocabMeaningSet:Meaning
+                              VocabSet:FrequencyRank
+                              VocabSet:IsCommon])
+
+(defvar exact-kana-match-cond `(like VocabSet:KanaWriting $R0))
+
+(defvar kanjidic-query-template `[:select ,search-result-fields
+                                  :from VocabSet
+                                  :join VocabEntityVocabMeaning
+                                  :on (= VocabSet:ID VocabEntityVocabMeaning:VocabEntity_ID)
+                                  :join VocabMeaningSet
+                                  :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID)
+                                  :where $R0
+                                  :limit 1000])
+(defvar exact-kana-match-query (kanjidic-templating kanjidic-query-template exact-kana-match-cond))
+
+(defclass raw-search-result ()
+  ((vocab-id :initarg :vocab-id
+             :type integer)
+   (kanji-form :initarg :kanji-form
+               :type (or null string))
+   (reading :initarg :reading
+            :type string
+            :custom string)
+   (definitions :initarg :definitions
+     :type list
+     :custom list)
+   (frequency-rank :initarg :frequency-rank
+                   :type (or null integer))
+   (is-common :initarg :is-common
+              :type boolean)))
+
+(defclass scored-search-result (raw-search-result)
+  ((score :initarg :score
+         :type float)))
+
+(defclass featurized-search-result (raw-search-result)
+  ((ranking-features :initarg :ranking-features
+                    :type list
+                    :custom list)))
+
+(defmethod sr-to-widget-data ((sr raw-search-result))
+  (let ((display-text (or (oref sr :kanji-form) (oref sr :reading)))
+        (badges (create-badges sr)))
+    (list display-text badges (oref sr :definitions) (determine-sr-face sr) (oref sr :reading))))
+
+(defun determine-sr-face (search-result)
+  'good-match-face)
+
+(defmethod featurized-sr-from-raw ((sr raw-search-result) features)
+  (featurized-search-result :vocab-id (oref sr :vocab-id)
+                            :kanji-form (oref sr :kanji-form)
+                            :reading (oref sr :reading)
+                            :definitions (oref sr :definitions)
+                            :frequency-rank (oref sr :frequency-rank)
+                            :is-common (oref sr :is-common)
+                            :ranking-features features))
+
+(defmethod scored-search-result-from-other ((sr raw-search-result) score)
+  (scored-search-result :vocab-id (oref sr :vocab-id)
+                        :kanji-form (oref sr :kanji-form)
+                        :reading (oref sr :reading)
+                        :definitions (oref sr :definitions)
+                        :frequency-rank (oref sr :frequency-rank)
+                        :is-common (oref sr :is-common)
+                        :score score))
+
+(defun kanjidic-search (reading-query)
+  (let* ((reading-results (kanjidic-search-reading reading-query))
+         (all-results (append reading-results))
+         (featurized-results (kanjidic-combine-queries all-results))
+         (ranked-results (kanjidic-rank-results featurized-results)))
+    ranked-results))
+
+(defun kanjidic-rank-results (featurized-results)
+  (let ((scored (-map (lambda (sr)
+                       (let ((score (kanjidic-score-result sr)))
+                         (scored-search-result-from-other sr score)))
+                       featurized-results)))
+    (--sort (< (oref it :score) (oref other :score)) scored)))
+
+(defvar kanjidic-feature-file "./features")
+
+(defun kanjidic-features-from-file ()
+  (let ((table (make-hash-table :test 'eq)))
+    (with-temp-buffer
+      (insert-file-contents kanjidic-feature-file)
+      (goto-char 0)
+      (while (prog2 (skip-chars-forward " \n") (not (eobp)))
+        (let ((key (read (current-buffer)))
+              (value (read (current-buffer))))
+          (puthash key value table))))
+    table))
+
+(defvar kanjidic-feature-values (kanjidic-features-from-file))
+
+(kanjidic-features-from-file)
+
+(defun kanjidic-score-result (featurized-result)
+  (-sum (-map (lambda (f)
+                (pcase f
+                  (`(,feature . ,feature-quantity)
+                   (* feature-quantity (gethash feature kanjidic-feature-values)))
+                  (feature (gethash feature kanjidic-feature-values))))
+              (oref featurized-result :ranking-features))))
+
+(defun kanjidic-combine-queries (all-results)
+  (let ((by-id (-group-by (lambda (r) (oref r :vocab-id)) all-results)))
+    (-map (lambda (group)
+            (let ((example (cadr group))
+                  (features (-distinct (-mapcat (lambda (r) (oref r :ranking-features)) (cdr group)))))
+              (oset example :ranking-features features)
+              example))
+          by-id)))
+
+(defun kanjidic-search-reading (reading-query)
+  (let ((exact-results (kanjidic-search-single-query
+                        (kanjidic-templating exact-kana-match-query reading-query))))
+        (setq exact-results (-map (lambda (r)
+                                    (featurized-sr-from-raw r '(exact-reading reading)))
+                                  exact-results))
+        (append exact-results)))
+
+(defun kanjidic-search-single-query (query)
+  (let* ((results (emacsql kanjidic-db query))
+         (by-id (-group-by 'car results)))
+    (-map 'collect-database-search-result by-id)))
+
+;    (list display-text (create-badges (car group)) definitions 'g kana)))
+(defun collect-database-search-result (id-group)
+  (let* ((example (cadr id-group))
+         (definitions (-map 'cadddr (cdr id-group))))
+    (pcase example
+      (`(,id ,kanji ,kana ,_ ,frequency ,is-common)
+       (raw-search-result :vocab-id id
+                          :kanji-form kanji
+                          :reading kana
+                          :definitions definitions
+                          :frequency-rank frequency
+                          :is-common (= 1 is-common))))))
+
+(defun create-badges (result)
+  (-filter 'identity (funcall (-juxt 'common-badge
+                                     'frequency-badge)
+                              result)))
+
+(defun frequency-badge (result)
+  (let ((frequency-rank (oref result :frequency-rank)))
+    (and frequency-rank
+         (list (format " W %dth most used " frequency-rank) 'badge-face))))
+
+(defun common-badge (result)
+  (and (oref result :is-common)
+       (list " 本 Common " 'badge-face)))
 
 (kanjidic-ui-setup)
