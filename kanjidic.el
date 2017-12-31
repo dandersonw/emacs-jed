@@ -364,7 +364,9 @@
 
 (defun kanjidic-query-independent-featurization (results)
   (-each results (lambda (r)
-                   (when (oref r :is-common) (sr-add-feature 'is-common))))
+                   (when (oref r :is-common) (sr-add-feature r 'is-common))
+                   (when (let ((freq (oref r :frequency-rank))) (and freq (> freq 35000)))
+                     (sr-add-feature r 'very-common))))
   results)
 
 (defun kanjidic-score-result (featurized-result)
