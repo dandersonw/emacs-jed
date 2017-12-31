@@ -35,13 +35,13 @@
   :group 'kanjidic-faces)
 
 (defface badge-face '((((class color)
-                                (background dark))
-                               (:background "yellow"))
-                              (((class color)
-                                (background light))
-                               (:background "yellow"
-                                            :box t))
-                              (t nil))
+                        (background dark))
+                       (:background "yellow"))
+                      (((class color)
+                        (background light))
+                       (:background "yellow"
+                                    :box t))
+                      (t nil))
   "todo"
   :group 'kanjidic-faces)
 
@@ -293,7 +293,7 @@
                                   :join VocabMeaningSet
                                   :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID)
                                   :where $R0
-                                  :limit 1000])
+                                  :limit 100])
 (defvar exact-kana-match-query (kanjidic-templating kanjidic-query-template exact-kana-match-cond))
 
 (defclass raw-search-result ()
@@ -359,7 +359,7 @@
                        (let ((score (kanjidic-score-result sr)))
                          (scored-search-result-from-other sr score)))
                        featurized-results)))
-    (--sort (< (oref it :score) (oref other :score)) scored)))
+    (--sort (> (oref it :score) (oref other :score)) scored)))
 
 (defvar kanjidic-feature-file "./features")
 
@@ -376,7 +376,7 @@
 
 (defvar kanjidic-feature-values (kanjidic-features-from-file))
 
-(kanjidic-features-from-file)
+(setq kanjidic-feature-values (kanjidic-features-from-file))
 
 (defun kanjidic-score-result (featurized-result)
   (-sum (-map (lambda (f)
@@ -396,12 +396,30 @@
           by-id)))
 
 (defun kanjidic-search-reading (reading-query)
-  (let ((exact-results (kanjidic-search-single-query
-                        (kanjidic-templating exact-kana-match-query reading-query))))
-        (setq exact-results (-map (lambda (r)
-                                    (featurized-sr-from-raw r '(exact-reading reading)))
-                                  exact-results))
-        (append exact-results)))
+  (let* ((do-prefix-search t)
+         (reading (if (string-match-p "[$＄]$" reading-query)
+                      (prog2 (setq do-prefix-search nil)
+                          (substring reading-query 0 -1))
+                    reading-query))
+         (exact-results (kanjidic-search-single-query
+                         (kanjidic-templating exact-kana-match-query reading))))
+    (setq exact-results (-map (lambda (r)
+                                (featurized-sr-from-raw r '(exact-reading reading)))
+                              exact-results))
+    (append exact-results
+            (and do-prefix-search (kanjidic-search-reading-prefix reading)))))
+
+(defun kanjidic-search-reading-prefix (reading-query)
+  (let ((results (kanjidic-search-single-query
+                  (kanjidic-templating exact-kana-match-query (concat reading-query "%"))))
+        (q-len (length reading-query)))
+    (-map (lambda (r)
+            (featurized-sr-from-raw r
+                                    (list 'prefix-reading
+                                          'reading
+                                          (cons 'extra-reading-len (- (length (oref r :reading))
+                                                                      q-len)))))
+          results)))
 
 (defun kanjidic-search-single-query (query)
   (let* ((results (emacsql kanjidic-db query))
