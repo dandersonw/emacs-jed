@@ -14,26 +14,6 @@
   "todo"
   :group 'faces)
 
-(defface common-match-face '((((class color)
-                             (background dark))
-                            (:background "lime green"))
-                           (((class color)
-                             (background light))
-                            (:background "light green"))
-                           (t nil))
-  "todo"
-  :group 'kanjidic-faces)
-
-(defface uncommon-match-face '((((class color)
-                                (background dark))
-                               (:background "light gray"))
-                              (((class color)
-                                (background light))
-                               (:background "light gray"))
-                              (t nil))
-  "todo"
-  :group 'kanjidic-faces)
-
 (defface badge-face '((((class color)
                         (background dark))
                        (:background "yellow"))
@@ -125,6 +105,28 @@
 
 (defvar spc-per-kan 1.7)
 (defvar top-bottom-ratio 2.0)
+
+(defun probe-display-settings ()
+  (if window-system
+      (kanjidic-graphical-display-settings)
+    (kanjidic-terminal-display-settings)))
+
+(defun kanjidic-graphical-display-settings ()
+  (defun default-font-width (c) 
+    (let ((window (selected-window))
+          (remapping face-remapping-alist))
+      (with-temp-buffer
+        (make-local-variable 'face-remapping-alist)
+        (setq face-remapping-alist remapping)
+        (set-window-buffer window (current-buffer))
+        (insert c)
+        (aref (aref (font-get-glyphs (font-at 1) 1 2) 0) 4))))
+  (setq spc-per-kan (/ (float (default-font-width "漢")) (default-font-width " ")))
+  (setq top-bottom-ratio 2.0))
+
+(defun kanjidic-terminal-display-settings ()
+  (setq spc-per-kan 2.0)
+  (setq top-bottom-ratio 1.0))
 
 (defun typeset-furigana (furigana-spec)
   (defun top-kan-per-btm (s)
@@ -312,8 +314,8 @@
   (unless (equal c ?p)
     (error "Bad escape"))
   (let* ((txt (widget-get widget :value))
-        (len (length txt))
-        (padlen (- display-text-width len)))
+         (len (length txt))
+         (padlen (- display-text-width len)))
     (when (> padlen 0)
       (insert (make-string padlen ? )))))
 
@@ -438,8 +440,8 @@
   (oset sr :ranking-features (cons feature (oref sr :ranking-features))))
 
 (defun determine-sr-face (search-result)
-  (cond ((oref search-result :is-common) 'common-match-face)
-        ((-intersection suboptimal-result-category-ids (oref search-result :vocab-categories)) 'uncommon-match-face)
+  (cond ((oref search-result :is-common) 'highlight)
+        ((-intersection suboptimal-result-category-ids (oref search-result :vocab-categories)) 'shadow)
         (t nil)))
 
 (defun kanjidic-search (reading-query)
@@ -561,4 +563,5 @@
                      (t nil))))
     (and rank (list (format " 本 %s " rank) 'badge-face))))
 
+(probe-display-settings)
 (kanjidic-ui-setup)
