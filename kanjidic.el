@@ -541,13 +541,19 @@
        (kanjidic-search-result :vocab-id id
                                :kanji-form kanji
                                :reading kana
-                               :furigana furigana
+                               :furigana (resolve-furigana furigana kanji kana)
                                :definitions definitions
                                :frequency-rank frequency
                                :is-common (= 1 is-common)
                                :wiki-rank wiki-rank
                                :vocab-categories categories))
       (_ (error "bad database result")))))
+
+(defun resolve-furigana (furigana kanji kana)
+  (or furigana
+      ;; Patch missing furigana for 3+ character 熟字訓
+      (and kanji (let ((kanji-len (length kanji)))
+                   (format "%d-%d:%s" 0 (- kanji-len 1) kana)))))
 
 (defun create-badges (result)
   (-filter 'identity (funcall (-juxt 'common-badge
