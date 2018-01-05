@@ -62,7 +62,7 @@
 (defvar display-text-width 15)
 
 (define-widget 'display-text 'group "todo"
-  :args (list 'string 'string)
+  :args (list 'string '(choice string symbol))
   :format "%v\n%p"
   :tag "display-text"
   :indent display-text-width
@@ -154,7 +154,7 @@
       (setq is-long (> (top-kan-per-btm curr) top-bottom-ratio))
       (when is-long
         (let* ((extra-kw (- curr-len (* top-bottom-ratio curr-bottom-width)))
-               (extra-bottom-spw (if (> extra-kw 2) 2 1)))
+               (extra-bottom-spw (ceiling (/ (* extra-kw spc-per-kan) top-bottom-ratio 2))))
           (setq curr-advice (make-string extra-bottom-spw ? ))
           (setq extra-bottom-width (+ (/ extra-bottom-spw spc-per-kan)
                                       extra-bottom-width))))
@@ -335,8 +335,8 @@
 
 (defun kanjidic-handle-search (a b)
   (let* ((reading-query (widget-value reading-field))
-        (search-results (kanjidic-search reading-query))
-        (widget-data (-map 'sr-to-widget-data search-results)))
+         (search-results (kanjidic-search reading-query))
+         (widget-data (-map 'sr-to-widget-data search-results)))
     (widget-value-set kanjidic-result-list widget-data))
   (widget-setup))
 
