@@ -45,7 +45,7 @@
   "todo"
   :group 'kanjidic-faces)
 
-(defface display-text-face '((t (:height 1.0)))
+(defface display-text-face '((t (:height 1.5)))
   "todo"
   :group 'kanjidic-faces)
 
@@ -59,8 +59,9 @@
 
 (defvar display-text-width 15)
 
-(define-widget 'display-text 'string "todo"
-  :format "%v%p"
+(define-widget 'display-text 'group "todo"
+  :args (list 'string 'string)
+  :format "%v\n%p"
   :tag "display-text"
   :indent display-text-width
   :format-handler 'pad-handler
@@ -103,12 +104,58 @@
   :value-create 'search-result-value-create)
 
 (defun display-text-value-create (widget)
-  (let ((text (widget-get widget :value))
-        (from (point)))
-    (insert text)
+  (let ((args (widget-get widget :args))
+        (value (widget-get widget :value))
+        from furigana-advice this-advice
+        text text-type furigana furigana-type)
+    (consume-widget-group-element widget args value text)
+    (consume-widget-group-element widget args value furigana)
+    (setq furigana-advice (typeset-furigana furigana))
+    (setq from (point))
+    (dotimes (i (length text))
+      (setq this-advice (assq i furigana-advice))
+      (when this-advice (insert (cdr this-advice)))
+      (insert (aref text i))
+      (when this-advice (insert (cdr this-advice))))
     (let ((overlay (make-overlay from (point) nil t nil)))
       (overlay-put overlay 'priority 2)
       (overlay-put overlay 'face 'display-text-face))))
+
+(defun typeset-furigana (furigana-spec)
+  (let* ((parsed (parse-furigana-spec furigana-spec))
+         (max-furigana-length (and parsed (-max (-map (lambda (s) (length (cdr s))) parsed))))
+         (furigana-height (and parsed (if (< max-furigana-length 4) 0.75 (/ 2.25 max-furigana-length))))
+         (from (point))
+         (result-advice nil)
+         (remaining parsed)
+         (running-pos 0)
+         curr this-len this-txt this-pos is-long)
+    (while remaining
+      (setq curr (car remaining))
+      (setq remaining (cdr remaining))
+      (setq this-pos (car curr))
+      (when (> (- this-pos running-pos) 0) (insert (make-string (- (* 4 (- this-pos running-pos)) 1) ? )))
+      (setq running-pos (+ 1 this-pos))
+      (setq this-text (cdr curr))
+      (setq this-len (length this-text))
+      (setq is-long (> this-len 2))
+      (when is-long (setq result-advice (cons (cons this-pos " ") result-advice)))
+      (when (or is-long (= this-len 1)) (insert " "))
+      (insert this-text)
+      (when (or is-long (= this-len 1)) (insert " ")))
+    (insert "\n")
+    (let ((overlay (make-overlay from (point) nil t nil)))
+      (overlay-put overlay 'priority 2)
+      (overlay-put overlay 'face (list :height furigana-height)))
+    result-advice))
+
+(defun parse-furigana-spec (furigana-spec)
+  (let* ((split (and furigana-spec (split-string furigana-spec ";"))))
+    (-map (lambda (s)
+            (let ((split (split-string s ":")))
+              (cons (string-to-int (car split)) (cadr split))))
+          split)))
+
 
 (defun definition-list-value-create (widget)
   (let* ((value (widget-get widget :value))
@@ -183,7 +230,7 @@
   (let ((args (widget-get widget :args))
         (from (point))
 	(value (widget-get widget :value))
-        children text facesym)
+        children text facesym text-type facesym-type)
     (consume-widget-group-element widget args value text)
     (consume-widget-group-element widget args value facesym)
     (push (widget-create-child-value widget text-type text) children)
@@ -211,7 +258,8 @@
   (let ((args (widget-get widget :args))
         (from (point))
 	(value (widget-get widget :value))
-	children facesym display-text badge-list definition-list)
+	children facesym display-text badge-list definition-list
+        display-text-type badge-list-type facesym-type definition-list-type)
     (consume-widget-group-element widget args value display-text)
     (consume-widget-group-element widget args value badge-list)
     (consume-widget-group-element widget args value definition-list)
@@ -280,6 +328,7 @@
 (defvar search-result-fields [VocabSet:ID
                               VocabSet:KanjiWriting
                               VocabSet:KanaWriting
+                              VocabSet:Furigana
                               VocabMeaningSet:Meaning
                               VocabSet:FrequencyRank
                               VocabSet:IsCommon
@@ -323,6 +372,8 @@
             (reading :initarg :reading
                      :type string
                      :custom string)
+            (furigana :initarg :furigana
+                      :type (or null string))
             (definitions :initarg :definitions
               :type list
               :custom list)
@@ -343,7 +394,11 @@
 (defmethod sr-to-widget-data ((sr kanjidic-search-result))
   (let ((display-text (or (oref sr :kanji-form) (oref sr :reading)))
         (badges (create-badges sr)))
-    (list display-text badges (oref sr :definitions) (determine-sr-face sr) (oref sr :reading))))
+    (list (list display-text (oref sr :furigana))
+          badges
+          (oref sr :definitions)
+          (determine-sr-face sr)
+          (oref sr :reading))))
 
 (defmethod sr-add-feature ((sr kanjidic-search-result) feature)
   (oset sr :ranking-features (cons feature (oref sr :ranking-features))))
@@ -438,17 +493,19 @@
 (defun collect-database-search-result (id-group)
   (let* ((example (cadr id-group))
          (categories (get-vocab-category-ids (car id-group)))
-         (definitions (-map 'cadddr (cdr id-group))))
+         (definitions (-map (lambda (g) (nth 4 g)) (cdr id-group))))
     (pcase example
-      (`(,id ,kanji ,kana ,_ ,frequency ,is-common ,wiki-rank)
+      (`(,id ,kanji ,kana ,furigana ,_ ,frequency ,is-common ,wiki-rank)
        (kanjidic-search-result :vocab-id id
                                :kanji-form kanji
                                :reading kana
+                               :furigana furigana
                                :definitions definitions
                                :frequency-rank frequency
                                :is-common (= 1 is-common)
                                :wiki-rank wiki-rank
-                               :vocab-categories categories)))))
+                               :vocab-categories categories))
+      (_ (error "bad database result")))))
 
 (defun create-badges (result)
   (-filter 'identity (funcall (-juxt 'common-badge
