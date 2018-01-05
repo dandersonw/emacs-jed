@@ -35,7 +35,7 @@
   "todo"
   :group 'kanjidic-faces)
 
-(defface search-result-separator-face-2 '((t (:height .1)))
+(defface search-result-pad-face '((t (:height .1)))
   "todo"
   :group 'kanjidic-faces)
 
@@ -283,7 +283,13 @@
          ,store (car (car answer))
          ,value (cdr answer)))
 
-(defun search-result-separator-line (face)
+(defun search-result-separator-line ()
+  (when window-system (search-result-separator-or-pad-line 'search-result-separator-face)))
+
+(defun search-result-pad-line ()
+  (search-result-separator-or-pad-line 'search-result-pad-face))
+
+(defun search-result-separator-or-pad-line (face)
   (let* ((from (point))
          (to (prog2 (insert "\n") (point)))
          (overlay (make-overlay from (point) nil t nil)))
@@ -300,15 +306,15 @@
     (consume-widget-group-element widget args value badge-list)
     (consume-widget-group-element widget args value definition-list)
     (consume-widget-group-element widget args value facesym)
-    (search-result-separator-line 'search-result-separator-face-2)
+    (search-result-pad-line)
     (push (widget-create-child-value widget display-text-type display-text) children)
     (push (widget-create-child-value widget badge-list-type badge-list) children)
     (push (widget-create-child-value widget definition-list-type definition-list) children)
     (widget-put widget :children (nreverse children))
-    (search-result-separator-line 'search-result-separator-face-2)
+    (search-result-pad-line)
     (let ((overlay (make-overlay from (point) nil t nil)))
       (overlay-put overlay 'face facesym))
-        (search-result-separator-line 'search-result-separator-face)))
+        (search-result-separator-line)))
 
 (defun pad-handler (widget c)
   (unless (equal c ?p)
