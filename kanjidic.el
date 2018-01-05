@@ -190,7 +190,7 @@
     (widget-put widget :children (nreverse children))
     (let ((overlay (make-overlay from (point) nil t nil)))
       (overlay-put overlay 'priority 2)
-      (overlay-put overlay 'face facesym))))
+      (and facesym (overlay-put overlay 'face facesym)))))
 
 (defmacro consume-widget-group-element (widget args value store)
   `(setq arg (car ,args)
@@ -295,7 +295,25 @@
                                   :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID)
                                   :where $R0
                                   :limit 100])
+
 (defvar exact-kana-match-query (kanjidic-templating kanjidic-query-template exact-kana-match-cond))
+
+(defvar suboptimal-result-categories '("ok" "oK" "arch"))
+
+(defun vocab-category-id-from-short (name)
+  (let* ((query-temp `[:select ID :from VocabCategorySet :where (= ShortName $R0)])
+         (templated (kanjidic-templating query-temp name)))
+    (caar (emacsql kanjidic-db templated))))
+
+(defvar suboptimal-result-category-ids nil)
+(setq suboptimal-result-category-ids (-map 'vocab-category-id-from-short suboptimal-result-categories))
+
+(defun get-vocab-category-ids (vocab-entity-id)
+  (car (emacsql kanjidic-db
+                [:select Categories_ID
+                 :from VocabCategoryVocabEntity
+                 :where (= VocabCategoryVocabEntity_VocabCategory_ID $s0)]
+                vocab-entity-id)))
 
 (defclass kanjidic-search-result ()
            ((vocab-id :initarg :vocab-id
@@ -314,6 +332,8 @@
                        :type boolean)
             (wiki-rank :initarg :wiki-rank
                        :type (or null integer))
+            (vocab-categories :initarg :vocab-categories
+                              :type list)
             (ranking-features :initarg :ranking-features
                               :type list
                               :custom list)
@@ -329,9 +349,9 @@
   (oset sr :ranking-features (cons feature (oref sr :ranking-features))))
 
 (defun determine-sr-face (search-result)
-  (if (oref search-result :is-common)
-      'common-match-face
-    'uncommon-match-face))
+  (cond ((oref search-result :is-common) 'common-match-face)
+        ((-intersection suboptimal-result-category-ids (oref search-result :vocab-categories)) 'uncommon-match-face)
+        (t nil)))
 
 (defun kanjidic-search (reading-query)
   (let* ((reading-results (kanjidic-search-reading reading-query))
@@ -417,6 +437,7 @@
 ;    (list display-text (create-badges (car group)) definitions 'g kana)))
 (defun collect-database-search-result (id-group)
   (let* ((example (cadr id-group))
+         (categories (get-vocab-category-ids (car id-group)))
          (definitions (-map 'cadddr (cdr id-group))))
     (pcase example
       (`(,id ,kanji ,kana ,_ ,frequency ,is-common ,wiki-rank)
@@ -426,7 +447,8 @@
                                :definitions definitions
                                :frequency-rank frequency
                                :is-common (= 1 is-common)
-                               :wiki-rank wiki-rank)))))
+                               :wiki-rank wiki-rank
+                               :vocab-categories categories)))))
 
 (defun create-badges (result)
   (-filter 'identity (funcall (-juxt 'common-badge
