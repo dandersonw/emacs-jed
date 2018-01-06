@@ -25,6 +25,10 @@
   "todo"
   :group 'kanjidic-faces)
 
+(defface obsolete-badge-face '((t (:background "gray" :box t)))
+  "todo"
+  :group 'kanjidic-faces)
+
 (defvar display-text-height 1.5)
 
 (defface display-text-face '((t (:height 1.5)))
@@ -410,13 +414,12 @@
          (templated (kanjidic-templating query-temp name)))
     (caar (emacsql kanjidic-db templated))))
 
-(defvar suboptimal-result-category-ids nil)
-(setq suboptimal-result-category-ids (-map 'vocab-category-id-from-short suboptimal-result-categories))
-
-(defun get-vocab-category-ids (vocab-entity-id)
+(defun get-vocab-categories (vocab-entity-id)
   (car (emacsql kanjidic-db
-                [:select Categories_ID
+                [:select ShortName
                  :from VocabCategoryVocabEntity
+                 :join VocabCategorySet
+                 :on (= VocabCategorySet:ID Categories_ID)
                  :where (= VocabCategoryVocabEntity_VocabCategory_ID $s0)]
                 vocab-entity-id)))
 
@@ -461,7 +464,7 @@
 
 (defun determine-sr-face (search-result)
   (cond ((oref search-result :is-common) 'highlight)
-        ((-intersection suboptimal-result-category-ids (oref search-result :vocab-categories)) 'shadow)
+        ((-intersection suboptimal-result-categories (oref search-result :vocab-categories)) 'shadow)
         (t nil)))
 
 (defun kanjidic-search (reading-query)
@@ -548,7 +551,7 @@
 ;    (list display-text (create-badges (car group)) definitions 'g kana)))
 (defun collect-database-search-result (id-group)
   (let* ((example (cadr id-group))
-         (categories (get-vocab-category-ids (car id-group)))
+         (categories (get-vocab-categories (car id-group)))
          (definitions (-map (lambda (g) (nth 4 g)) (cdr id-group))))
     (pcase example
       (`(,id ,kanji ,kana ,furigana ,_ ,frequency ,is-common ,wiki-rank)
@@ -571,7 +574,8 @@
 
 (defun create-badges (result)
   (-filter 'identity (funcall (-juxt 'common-badge
-                                     'wikirank-badge)
+                                     'wikirank-badge
+                                     'obsolete-reading-badge)
                               result)))
 
 (defun wikirank-badge (result)
@@ -589,5 +593,10 @@
                      (t nil))))
     (and rank (list (format " 本 %s " rank) 'badge-face))))
 
+(defun obsolete-reading-badge (result)
+  (and (-contains? (oref result :vocab-categories) "ok")
+       (list "Outdated reading" 'obsolete-badge-face)))
+
+;; Run
 (probe-display-settings)
 (kanjidic-ui-setup)
