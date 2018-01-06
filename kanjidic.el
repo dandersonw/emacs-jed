@@ -454,7 +454,7 @@
 
 (defun get-definition-categories (meaning-ids)
   (emacsql kanjidic-db
-           [:select [VocabMeaningVocabCategory_VocabCategory_ID Label]
+           [:select [VocabMeaningVocabCategory_VocabCategory_ID ShortName]
             :from VocabMeaningVocabCategory
             :join VocabCategorySet
             :on (= VocabCategorySet:ID Categories_ID)
@@ -519,10 +519,10 @@
 
 (defvar kanjidic-feature-file "./features")
 
-(defun kanjidic-features-from-file ()
-  (let ((table (make-hash-table :test 'eq)))
+(defun load-hash-table-from-file (path)
+  (let ((table (make-hash-table :test 'equal)))
     (with-temp-buffer
-      (insert-file-contents kanjidic-feature-file)
+      (insert-file-contents path)
       (goto-char 0)
       (while (prog2 (skip-chars-forward " \n") (not (eobp)))
         (let ((key (read (current-buffer)))
@@ -530,9 +530,7 @@
           (puthash key value table))))
     table))
 
-(defvar kanjidic-feature-values (kanjidic-features-from-file))
-
-(setq kanjidic-feature-values (kanjidic-features-from-file))
+(defvar kanjidic-feature-values nil) ; load at runtime
 
 (defun kanjidic-query-independent-featurization (results)
   (-each results (lambda (r)
@@ -609,20 +607,14 @@
          (categories (get-definition-categories ids)))
     (mapcar* (lambda (text id)
                (let* ((for-this-id (--map (and (= (car it) id) (cdr it)) categories))
-                      (flattened (-flatten for-this-id))
-                      (cat-str (and flattened (mapconcat 'identity flattened " ; "))))
+                      (aliased (--map (gethash it meaning-category-aliases) (-flatten for-this-id)))
+                      (cat-str (and aliased (mapconcat 'identity aliased " ; "))))
                  (list cat-str text)))
              texts ids)))
 
-;; (defvar kanjidic-meaning-category-aliases #s(hash-table data ("noun (common) (futsuumeishi)" "noun"
-;;                                                               "noun, used as a prefix" "prefix noun"
-;;                                                               "noun, used as a suffix" "suffix noun"
-;;                                                               "adverb (fukushi)" "adverb"
-;;                                                               "noun or participle which takes the aux. verb suru" "-suru verb"
-;;                                                               )))
+(defvar meaning-category-alias-path "./category-names")
 
-(defun kanjidic-alias-meaning-category (category)
-  )
+(defvar meaning-category-aliases nil) ; load at runtime
 
 (defun resolve-furigana (furigana kanji kana)
   (or furigana
@@ -655,6 +647,13 @@
   (and (-contains? (oref result :vocab-categories) "ok")
        (list "Outdated reading" 'obsolete-badge-face)))
 
+(defun load-data-files ()
+;  (or meaning-category-aliases
+      (setq meaning-category-aliases (load-hash-table-from-file meaning-category-alias-path));)
+  (or kanjidic-feature-values
+      (setq kanjidic-feature-values (load-hash-table-from-file kanjidic-feature-file))))
+
 ;; Run
+(load-data-files)
 (probe-display-settings)
 (kanjidic-ui-setup)
