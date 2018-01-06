@@ -53,10 +53,16 @@
   :format-handler 'pad-handler
   :value-create 'display-text-value-create)
 
-(define-widget 'definition 'string "todo"
+(define-widget 'meaning-categories 'choice "todo"
+  :args (list 'symbol 'string)
+  :format "%v "
+  :value-create 'meaning-categories-value-create)
+
+(define-widget 'definition 'list "todo"
+  :args (list 'meaning-categories 'imm-str)
   :format "%v\n"
   :tag "def"
-  :value-create (lambda (w) (insert (widget-value w))))
+  :value-create 'definition-value-create)
 
 (define-widget 'badge 'group "todo"
   :args (list 'imm-str 'symbol)
@@ -89,6 +95,36 @@
   :args (list 'display-text 'badge-list 'definition-list 'symbol 'string)
   :value-create 'search-result-value-create)
 
+(defmacro consume-widget-group-element (widget args value store)
+  `(let (answer arg)
+     (setq arg (car ,args)
+           ,(intern (concat (symbol-name store) "-type")) arg
+           ,args (cdr ,args)
+           answer (widget-match-inline arg ,value)
+           ,store (car (car answer))
+           ,value (cdr answer))))
+
+(defun definition-value-create (widget)
+  (let ((args (widget-get widget :args))
+        (value (widget-get widget :value))
+        children
+        def-categories def-categories-type
+        text text-type)
+    (consume-widget-group-element widget args value def-categories)
+    (consume-widget-group-element widget args value text)
+    (when def-categories (push (widget-create-child-value widget def-categories-type def-categories) children))
+    (push (widget-create-child-value widget text-type text) children)
+    (widget-put widget :children (nreverse children))))
+
+(defun meaning-categories-value-create (widget)
+  (let ((text (widget-get widget :value))
+        (from (point)))
+    (when text
+        (insert (format "[%s]" text))
+      (let ((overlay (make-overlay from (point) nil t nil)))
+        (overlay-put overlay 'priority 2)
+        (overlay-put overlay 'face 'shadow)))))
+
 (defun display-text-value-create (widget)
   (let ((args (widget-get widget :args))
         (value (widget-get widget :value))
@@ -99,7 +135,7 @@
     (setq furigana-advice (typeset-furigana furigana))
     (setq from (point))
     (dotimes (i (length text))
-      (setq this-advice (assq i furigana-advice))
+      (setq this-advice (assoc i furigana-advice))
       (when this-advice (insert (cdr this-advice)))
       (insert (aref text i)))
     (let ((overlay (make-overlay from (point) nil t nil)))
@@ -138,7 +174,7 @@
       (/ top-width bottom-width)))
   (let* ((parsed (parse-furigana-spec furigana-spec))
          (max-furigana-ratio (and parsed (-max (-map 'top-kan-per-btm parsed))))
-         (furigana-height (and parsed (/ 1.5 top-bottom-ratio)))
+         (furigana-height (/ display-text-height top-bottom-ratio))
          (from (point))
          (result-advice nil)
          (remaining parsed)
@@ -223,14 +259,14 @@
       (let ((answer (widget-match-inline type value)))
 	(if answer
 	    (setq children (cons (definition-list-entry-create
-				  widget
-				  (if (widget-get type :inline)
-				      (car answer)
-				    (car (car answer)))
-				  t
-                                  count)
+                                   widget
+                                   (if (widget-get type :inline)
+                                       (car answer)
+                                     (car (car answer)))
+                                   t
+                                   count)
 				 children)
-		  value (cdr answer))
+                  value (cdr answer))
 	  (setq value nil))))
     (widget-put widget :children (nreverse children))))
 
@@ -292,14 +328,6 @@
     (let ((overlay (make-overlay from (point) nil t nil)))
       (overlay-put overlay 'priority 2)
       (and facesym (overlay-put overlay 'face facesym)))))
-
-(defmacro consume-widget-group-element (widget args value store)
-  `(setq arg (car ,args)
-         ,(intern (concat (symbol-name store) "-type")) arg
-         ,args (cdr ,args)
-         answer (widget-match-inline arg ,value)
-         ,store (car (car answer))
-         ,value (cdr answer)))
 
 (defun search-result-separator-line ()
   (when window-system (search-result-separator-or-pad-line 'search-result-separator-face)))
@@ -389,6 +417,7 @@
                               VocabSet:KanjiWriting
                               VocabSet:KanaWriting
                               VocabSet:Furigana
+                              VocabMeaningSet:ID
                               VocabMeaningSet:Meaning
                               VocabSet:FrequencyRank
                               VocabSet:IsCommon
@@ -422,6 +451,15 @@
                  :on (= VocabCategorySet:ID Categories_ID)
                  :where (= VocabCategoryVocabEntity_VocabCategory_ID $s0)]
                 vocab-entity-id)))
+
+(defun get-definition-categories (meaning-ids)
+  (emacsql kanjidic-db
+           [:select [VocabMeaningVocabCategory_VocabCategory_ID Label]
+            :from VocabMeaningVocabCategory
+            :join VocabCategorySet
+            :on (= VocabCategorySet:ID Categories_ID)
+            :where (in VocabMeaningVocabCategory_VocabCategory_ID $v0)]
+           (vconcat meaning-ids)))
 
 (defclass kanjidic-search-result ()
            ((vocab-id :initarg :vocab-id
@@ -548,13 +586,12 @@
          (by-id (-group-by 'car results)))
     (-map 'collect-database-search-result by-id)))
 
-;    (list display-text (create-badges (car group)) definitions 'g kana)))
 (defun collect-database-search-result (id-group)
   (let* ((example (cadr id-group))
          (categories (get-vocab-categories (car id-group)))
-         (definitions (-map (lambda (g) (nth 4 g)) (cdr id-group))))
+         (definitions (kanjidic-collect-definitions id-group)))
     (pcase example
-      (`(,id ,kanji ,kana ,furigana ,_ ,frequency ,is-common ,wiki-rank)
+      (`(,id ,kanji ,kana ,furigana ,_ ,__ ,frequency ,is-common ,wiki-rank)
        (kanjidic-search-result :vocab-id id
                                :kanji-form kanji
                                :reading kana
@@ -566,6 +603,27 @@
                                :vocab-categories categories))
       (_ (error "bad database result")))))
 
+(defun kanjidic-collect-definitions (id-group)
+  (let* ((texts (-select-column 5 (cdr id-group)))
+         (ids (-select-column 4 (cdr id-group)))
+         (categories (get-definition-categories ids)))
+    (mapcar* (lambda (text id)
+               (let* ((for-this-id (--map (and (= (car it) id) (cdr it)) categories))
+                      (flattened (-flatten for-this-id))
+                      (cat-str (and flattened (mapconcat 'identity flattened " ; "))))
+                 (list cat-str text)))
+             texts ids)))
+
+;; (defvar kanjidic-meaning-category-aliases #s(hash-table data ("noun (common) (futsuumeishi)" "noun"
+;;                                                               "noun, used as a prefix" "prefix noun"
+;;                                                               "noun, used as a suffix" "suffix noun"
+;;                                                               "adverb (fukushi)" "adverb"
+;;                                                               "noun or participle which takes the aux. verb suru" "-suru verb"
+;;                                                               )))
+
+(defun kanjidic-alias-meaning-category (category)
+  )
+
 (defun resolve-furigana (furigana kanji kana)
   (or furigana
       ;; Patch missing furigana for 3+ character 熟字訓
@@ -574,9 +632,9 @@
 
 (defun create-badges (result)
   (-filter 'identity (funcall (-juxt 'common-badge
-                                     'wikirank-badge
-                                     'obsolete-reading-badge)
-                              result)))
+                                    'wikirank-badge
+                                    'obsolete-reading-badge)
+                             result)))
 
 (defun wikirank-badge (result)
   (let ((wiki-rank (oref result :wiki-rank)))
