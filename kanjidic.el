@@ -5,16 +5,16 @@
 (require 'widget)
 (require 'wid-edit)
 
-(switch-to-buffer "*kanjidic*")
-(buffer-disable-undo "*kanjidic*")
+(switch-to-buffer "*jed*")
+(buffer-disable-undo "*jed*")
 
-(defvar kanjidic-db (emacsql-sqlite "~/workspace/KanjiDatabaseCopy.sqlite"))
+(defvar jed-db (emacsql-sqlite "~/workspace/KanjiDatabaseCopy.sqlite"))
 
-(defgroup kanjidic-faces nil
+(defgroup jed-faces nil
   "todo"
   :group 'faces)
 
-(defface badge-face '((((class color)
+(defface jed-badge-face '((((class color)
                         (background dark))
                        (:background "yellow"))
                       (((class color)
@@ -23,79 +23,79 @@
                                     :box t))
                       (t nil))
   "todo"
-  :group 'kanjidic-faces)
+  :group 'jed-faces)
 
-(defface obsolete-badge-face '((t (:background "gray" :box t)))
+(defface jed-obsolete-badge-face '((t (:background "gray" :box t)))
   "todo"
-  :group 'kanjidic-faces)
+  :group 'jed-faces)
 
-(defvar display-text-height 1.5)
+(defvar jed-display-text-height 1.5)
 
-(defface display-text-face '((t (:height 1.5)))
+(defface jed-display-text-face '((t (:height 1.5)))
   "todo"
-  :group 'kanjidic-faces)
+  :group 'jed-faces)
 
-(defface search-result-separator-face '((t (:height .1 :background "dark gray")))
+(defface jed-sr-separator-face '((t (:height .1 :background "dark gray")))
   "todo"
-  :group 'kanjidic-faces)
+  :group 'jed-faces)
 
-(defface search-result-pad-face '((t (:height .1)))
+(defface jed-sr-pad-face '((t (:height .1)))
   "todo"
-  :group 'kanjidic-faces)
+  :group 'jed-faces)
 
-(defvar display-text-width 15)
+(defvar jed-display-text-width 15)
 
-(define-widget 'display-text 'group "todo"
+(define-widget 'jed-display-text 'group "todo"
   :args (list 'string '(choice string symbol))
   :format "%v\n%p"
   :tag "display-text"
-  :indent display-text-width
-  :format-handler 'pad-handler
-  :value-create 'display-text-value-create)
+  :indent jed-display-text-width
+  :format-handler 'jed-pad-handler
+  :value-create 'jed-display-text-value-create)
 
-(define-widget 'meaning-categories 'choice "todo"
+(define-widget 'jed-meaning-categories 'choice "todo"
   :args (list 'symbol 'string)
   :format "%v "
-  :value-create 'meaning-categories-value-create)
+  :value-create 'jed-meaning-categories-value-create)
 
-(define-widget 'definition 'list "todo"
-  :args (list 'meaning-categories 'imm-str)
+(define-widget 'jed-definition 'list "todo"
+  :args (list 'jed-meaning-categories 'jed-str)
   :format "%v\n"
   :tag "def"
-  :value-create 'definition-value-create)
+  :value-create 'jed-definition-value-create)
 
-(define-widget 'badge 'group "todo"
-  :args (list 'imm-str 'symbol)
-  :value-create 'badge-value-create)
+(define-widget 'jed-badge 'group "todo"
+  :args (list 'jed-str 'symbol)
+  :value-create 'jed-badge-value-create)
 
-(define-widget 'badge-list 'editable-list "todo"
-  :args (list 'badge)
+(define-widget 'jed-badge-list 'editable-list "todo"
+  :args (list 'jed-badge)
   :indent 1
   :format "%v\n"
   :entry-format "%v")
 
-(define-widget 'imm-str 'string "todo"
+(define-widget 'jed-str 'string "todo"
   :format "%v"
-  :tag "imm-str"
+  :tag "jed-str"
   :value-create (lambda (w) (insert (widget-value w))))
 
-(define-widget 'search-result-list 'editable-list "todo"
+(define-widget 'jed-sr-result-list 'editable-list "todo"
   :format "%v\n"
   :entry-format "%v")
 
-(define-widget 'definition-list 'editable-list "todo"
-  :args (list 'definition)
-  :indent display-text-width
+(define-widget 'jed-deflist 'editable-list "todo"
+  :args (list 'jed-definition)
+  :indent jed-display-text-width
   :format "%v"
   :entry-format "%n %v"
-  :value-create 'definition-list-value-create)
+  :value-create 'jed-deflist-value-create)
 
-(define-widget 'search-result 'group "todo"
+(define-widget 'jed-search-result 'group "todo"
   ;     (list display text / definitions / match-quality / kana)
-  :args (list 'display-text 'badge-list 'definition-list 'symbol 'string)
-  :value-create 'search-result-value-create)
+  :args (list 'jed-display-text 'jed-badge-list 'jed-deflist 'symbol 'string)
+  :value-create 'jed-search-result-value-create)
 
-(defmacro consume-widget-group-element (widget args value store)
+(defmacro jed-match-widget-element (widget args value store)
   `(let (answer arg)
      (setq arg (car ,args)
            ,(intern (concat (symbol-name store) "-type")) arg
@@ -104,19 +104,19 @@
            ,store (car (car answer))
            ,value (cdr answer))))
 
-(defun definition-value-create (widget)
+(defun jed-definition-value-create (widget)
   (let ((args (widget-get widget :args))
         (value (widget-get widget :value))
         children
         def-categories def-categories-type
         text text-type)
-    (consume-widget-group-element widget args value def-categories)
-    (consume-widget-group-element widget args value text)
+    (jed-match-widget-element widget args value def-categories)
+    (jed-match-widget-element widget args value text)
     (when def-categories (push (widget-create-child-value widget def-categories-type def-categories) children))
     (push (widget-create-child-value widget text-type text) children)
     (widget-put widget :children (nreverse children))))
 
-(defun meaning-categories-value-create (widget)
+(defun jed-meaning-categories-value-create (widget)
   (let ((text (widget-get widget :value))
         (from (point)))
     (when text
@@ -125,14 +125,14 @@
         (overlay-put overlay 'priority 2)
         (overlay-put overlay 'face 'shadow)))))
 
-(defun display-text-value-create (widget)
+(defun jed-display-text-value-create (widget)
   (let ((args (widget-get widget :args))
         (value (widget-get widget :value))
         from furigana-advice this-advice
         text text-type furigana furigana-type)
-    (consume-widget-group-element widget args value text)
-    (consume-widget-group-element widget args value furigana)
-    (setq furigana-advice (typeset-furigana furigana))
+    (jed-match-widget-element widget args value text)
+    (jed-match-widget-element widget args value furigana)
+    (setq furigana-advice (jed-typeset-furigana furigana))
     (setq from (point))
     (dotimes (i (length text))
       (setq this-advice (assoc i furigana-advice))
@@ -140,18 +140,18 @@
       (insert (aref text i)))
     (let ((overlay (make-overlay from (point) nil t nil)))
       (overlay-put overlay 'priority 2)
-      (overlay-put overlay 'face 'display-text-face))))
+      (overlay-put overlay 'face 'jed-display-text-face))))
 
 (defvar spc-per-kan 1.7)
 (defvar top-bottom-ratio 2.0)
 
-(defun probe-display-settings ()
+(defun jed-probe-display-settings ()
   (if window-system
-      (kanjidic-graphical-display-settings)
-    (kanjidic-terminal-display-settings)))
+      (jed-graphical-display-settings)
+    (jed-terminal-display-settings)))
 
-(defun kanjidic-graphical-display-settings ()
-  (defun default-font-width (c) 
+(defun jed-graphical-display-settings ()
+  (defun jed-default-font-width (c) 
     (let ((window (selected-window))
           (remapping face-remapping-alist))
       (with-temp-buffer
@@ -160,28 +160,29 @@
         (set-window-buffer window (current-buffer))
         (insert c)
         (aref (aref (font-get-glyphs (font-at 1) 1 2) 0) 4))))
-  (setq spc-per-kan (/ (float (default-font-width "漢")) (default-font-width " ")))
+  (setq spc-per-kan (/ (float (jed-default-font-width "漢")) (default-font-width " ")))
   (setq top-bottom-ratio 2.0))
 
-(defun kanjidic-terminal-display-settings ()
+(defun jed-terminal-display-settings ()
   (setq spc-per-kan 2.0)
   (setq top-bottom-ratio 1.0))
 
-(defun typeset-furigana (furigana-spec)
+(defun jed-typeset-furigana (furigana-spec)
   (defun top-kan-per-btm (s)
     (let ((bottom-width (float (- (cdar s) (caar s))))
           (top-width (length (cdr s))))
       (/ top-width bottom-width)))
-  (let* ((parsed (parse-furigana-spec furigana-spec))
+  (let* ((parsed (jed-parse-furigana furigana-spec))
          (max-furigana-ratio (and parsed (-max (-map 'top-kan-per-btm parsed))))
-         (furigana-height (/ display-text-height top-bottom-ratio))
+         (furigana-height (/ jed-display-text-height top-bottom-ratio))
          (from (point))
          (result-advice nil)
          (remaining parsed)
          (running-top-pos 0)
          (extra-bottom-width 0.0)
-         curr curr-len curr-txt curr-bottom-pos is-long curr-advice
-         curr-bottom-l curr-bottom-r curr-bottom-width )
+         curr curr-len curr-text curr-bottom-pos is-long curr-advice
+         curr-bottom-l curr-bottom-r curr-bottom-width
+         target-bottom-center target-top-l)
     (while remaining
       (setq curr-advice nil)
       (setq curr (car remaining))
@@ -232,7 +233,7 @@
       (overlay-put overlay 'face (list :height furigana-height)))
     result-advice))
 
-(defun parse-furigana-spec (furigana-spec)
+(defun jed-parse-furigana (furigana-spec)
   (let* ((split (and furigana-spec (split-string furigana-spec ";"))))
     (-map (lambda (s)
             (let* ((splita (split-string s ":"))
@@ -247,7 +248,7 @@
           split)))
 
 
-(defun definition-list-value-create (widget)
+(defun jed-deflist-value-create (widget)
   (let* ((value (widget-get widget :value))
 	 (type (nth 0 (widget-get widget :args)))
          (count 0)
@@ -258,7 +259,7 @@
       (setq count (+ 1 count))
       (let ((answer (widget-match-inline type value)))
 	(if answer
-	    (setq children (cons (definition-list-entry-create
+	    (setq children (cons (jed-deflist-entry-create
                                    widget
                                    (if (widget-get type :inline)
                                        (car answer)
@@ -270,7 +271,7 @@
 	  (setq value nil))))
     (widget-put widget :children (nreverse children))))
 
-(defun definition-list-entry-create (widget value conv idx)
+(defun jed-deflist-entry-create (widget value conv idx)
   (let ((type (nth 0 (widget-get widget :args)))
 	child delete insert)
     (widget-specify-insert
@@ -316,88 +317,91 @@
     (if delete (widget-put delete :widget child))
     child))
 
-(defun badge-value-create (widget)
+(defun jed-badge-value-create (widget)
   (let ((args (widget-get widget :args))
         (from (point))
 	(value (widget-get widget :value))
         children text facesym text-type facesym-type)
-    (consume-widget-group-element widget args value text)
-    (consume-widget-group-element widget args value facesym)
+    (jed-match-widget-element widget args value text)
+    (jed-match-widget-element widget args value facesym)
     (push (widget-create-child-value widget text-type text) children)
     (widget-put widget :children (nreverse children))
     (let ((overlay (make-overlay from (point) nil t nil)))
       (overlay-put overlay 'priority 2)
       (and facesym (overlay-put overlay 'face facesym)))))
 
-(defun search-result-separator-line ()
-  (when window-system (search-result-separator-or-pad-line 'search-result-separator-face)))
+(defun jed-sr-separator-line ()
+  (when window-system (jed-sr-separator-or-pad-line 'search-result-separator-face)))
 
-(defun search-result-pad-line ()
-  (search-result-separator-or-pad-line 'search-result-pad-face))
+(defun jed-sr-pad-line ()
+  (jed-sr-separator-or-pad-line 'jed-search-result-pad-face))
 
-(defun search-result-separator-or-pad-line (face)
+(defun jed-sr-separator-or-pad-line (face)
   (let* ((from (point))
          (to (prog2 (insert "\n") (point)))
          (overlay (make-overlay from (point) nil t nil)))
     (overlay-put overlay 'priority 2)
     (overlay-put overlay 'face face)))
 
-(defun search-result-value-create (widget)
+(defun jed-sr-value-create (widget)
   (let ((args (widget-get widget :args))
         (from (point))
 	(value (widget-get widget :value))
 	children facesym display-text badge-list definition-list
         display-text-type badge-list-type facesym-type definition-list-type)
-    (consume-widget-group-element widget args value display-text)
-    (consume-widget-group-element widget args value badge-list)
-    (consume-widget-group-element widget args value definition-list)
-    (consume-widget-group-element widget args value facesym)
-    (search-result-pad-line)
+    (jed-match-widget-element widget args value display-text)
+    (jed-match-widget-element widget args value badge-list)
+    (jed-match-widget-element widget args value definition-list)
+    (jed-match-widget-element widget args value facesym)
+    (jed-sr-pad-line)
     (push (widget-create-child-value widget display-text-type display-text) children)
     (push (widget-create-child-value widget badge-list-type badge-list) children)
     (push (widget-create-child-value widget definition-list-type definition-list) children)
     (widget-put widget :children (nreverse children))
-    (search-result-pad-line)
+    (jed-sr-pad-line)
     (let ((overlay (make-overlay from (point) nil t nil)))
       (overlay-put overlay 'face facesym))
-        (search-result-separator-line)))
+        (jed-sr-separator-line)))
 
-(defun pad-handler (widget c)
+(defun jed-pad-handler (widget c)
   (unless (equal c ?p)
     (error "Bad escape"))
   (let* ((txt (widget-get widget :value))
          (len (length txt))
-         (padlen (- display-text-width len)))
+         (padlen (- jed-display-text-width len)))
     (when (> padlen 0)
       (insert (make-string padlen ? )))))
 
-(defun kanjidic-ui-setup ()
+(defvar jed-reading-field nil)
+(defvar jed-result-list nil)
+
+(defun jed-ui-setup ()
   (kill-all-local-variables)
-  (make-local-variable 'reading-field)
+  (make-local-variable 'jed-reading-field)
   (let ((inhibit-read-only t))
          (erase-buffer))
   (remove-overlays)
-  (setq reading-field (widget-create 'editable-field
+  (setq jed-reading-field (widget-create 'editable-field
                                      :size 30
                                      :format "Reading: %v"  
-                                     :action 'kanjidic-handle-search))
+                                     :action 'jed-handle-search))
   (widget-insert (concat "\n" (make-string 50 ?-) "\n"))
-  (setq kanjidic-result-list (widget-create 'search-result-list
-                                            'search-result))
+  (setq jed-result-list (widget-create 'jed-sr-result-list
+                                            'jed-search-result))
   (use-local-map widget-keymap)
   (widget-setup))
 
-(defun kanjidic-handle-search (a b)
-  (let* ((reading-query (widget-value reading-field))
-         (search-results (kanjidic-search reading-query))
-         (widget-data (-map 'sr-to-widget-data search-results)))
-    (widget-value-set kanjidic-result-list widget-data))
+(defun jed-handle-search (a b)
+  (let* ((reading-query (widget-value jed-reading-field))
+         (search-results (jed-search reading-query))
+         (widget-data (-map 'jed-sr-to-widget-data search-results)))
+    (widget-value-set jed-result-list widget-data))
   (widget-setup))
 
-(defun kanjidic-templating (query &rest strings)
-  (kanjidic-templating-h query 'vconcat strings))
+(defun jed-templating (query &rest strings)
+  (jed-templating-h query 'vconcat strings))
 
-(defun kanjidic-templating-h (query typef strings)
+(defun jed-templating-h (query typef strings)
   (funcall typef (-map (lambda (token)
                    (cond ((symbolp token)
                           (let* ((name (symbol-name token))
@@ -408,12 +412,12 @@
                                   (cond ((equal type "R") (nth idx strings))
                                         (t (error "Definitely should not happen"))))
                               token)))
-                         ((vectorp token) (kanjidic-templating-h token 'vconcat strings))
-                         ((listp token) (kanjidic-templating-h token 'identity strings))
+                         ((vectorp token) (jed-templating-h token 'vconcat strings))
+                         ((listp token) (jed-templating-h token 'identity strings))
                          (t token)))
                  query)))
 
-(defvar search-result-fields [VocabSet:ID
+(defvar jed-sr-fields [VocabSet:ID
                               VocabSet:KanjiWriting
                               VocabSet:KanaWriting
                               VocabSet:Furigana
@@ -423,9 +427,9 @@
                               VocabSet:IsCommon
                               VocabSet:WikiRank])
 
-(defvar exact-kana-match-cond `(like VocabSet:KanaWriting $R0))
+(defvar jed-kana-match-cond `(like VocabSet:KanaWriting $R0))
 
-(defvar kanjidic-query-template `[:select ,search-result-fields
+(defvar jed-query-template `[:select ,jed-sr-fields
                                   :from VocabSet
                                   :join VocabEntityVocabMeaning
                                   :on (= VocabSet:ID VocabEntityVocabMeaning:VocabEntity_ID)
@@ -434,17 +438,17 @@
                                   :where $R0
                                   :limit 100])
 
-(defvar exact-kana-match-query (kanjidic-templating kanjidic-query-template exact-kana-match-cond))
+(defvar jed-kana-match-query (jed-templating jed-query-template jed-kana-match-cond))
 
-(defvar suboptimal-result-categories '("ok" "oK" "arch"))
+(defvar jed-suboptimal-result-categories '("ok" "oK" "arch"))
 
-(defun vocab-category-id-from-short (name)
+(defun jed-vocab-category-id-from-short (name)
   (let* ((query-temp `[:select ID :from VocabCategorySet :where (= ShortName $R0)])
-         (templated (kanjidic-templating query-temp name)))
-    (caar (emacsql kanjidic-db templated))))
+         (templated (jed-templating query-temp name)))
+    (caar (emacsql jed-db templated))))
 
-(defun get-vocab-categories (vocab-entity-id)
-  (car (emacsql kanjidic-db
+(defun jed-get-vocab-categories (vocab-entity-id)
+  (car (emacsql jed-db
                 [:select ShortName
                  :from VocabCategoryVocabEntity
                  :join VocabCategorySet
@@ -452,8 +456,8 @@
                  :where (= VocabCategoryVocabEntity_VocabCategory_ID $s0)]
                 vocab-entity-id)))
 
-(defun get-definition-categories (meaning-ids)
-  (emacsql kanjidic-db
+(defun jed-get-definition-categories (meaning-ids)
+  (emacsql jed-db
            [:select [VocabMeaningVocabCategory_VocabCategory_ID ShortName]
             :from VocabMeaningVocabCategory
             :join VocabCategorySet
@@ -461,7 +465,7 @@
             :where (in VocabMeaningVocabCategory_VocabCategory_ID $v0)]
            (vconcat meaning-ids)))
 
-(defclass kanjidic-search-result ()
+(defclass jed-search-result ()
            ((vocab-id :initarg :vocab-id
                       :type integer)
             (kanji-form :initarg :kanji-form
@@ -488,38 +492,38 @@
             (score :initarg :score
                    :type float)))
 
-(defmethod sr-to-widget-data ((sr kanjidic-search-result))
+(defmethod jed-sr-to-widget-data ((sr jed-search-result))
   (let ((display-text (or (oref sr :kanji-form) (oref sr :reading)))
-        (badges (create-badges sr)))
+        (badges (jed-create-badges sr)))
     (list (list display-text (oref sr :furigana))
           badges
           (oref sr :definitions)
-          (determine-sr-face sr)
+          (jed-determine-sr-face sr)
           (oref sr :reading))))
 
-(defmethod sr-add-feature ((sr kanjidic-search-result) feature)
+(defmethod jed-sr-add-feature ((sr jed-search-result) feature)
   (oset sr :ranking-features (cons feature (oref sr :ranking-features))))
 
-(defun determine-sr-face (search-result)
+(defun jed-determine-sr-face (search-result)
   (cond ((oref search-result :is-common) 'highlight)
-        ((-intersection suboptimal-result-categories (oref search-result :vocab-categories)) 'shadow)
+        ((-intersection jed-suboptimal-result-categories (oref search-result :vocab-categories)) 'shadow)
         (t nil)))
 
-(defun kanjidic-search (reading-query)
-  (let* ((reading-results (kanjidic-search-reading reading-query))
+(defun jed-search (reading-query)
+  (let* ((reading-results (jed-search-reading reading-query))
          (all-results (append reading-results))
-         (combined-results (kanjidic-combine-queries all-results))
-         (featurized-results (kanjidic-query-independent-featurization combined-results))
-         (ranked-results (kanjidic-rank-results featurized-results)))
+         (combined-results (jed-combine-queries all-results))
+         (featurized-results (jed-query-independent-featurization combined-results))
+         (ranked-results (jed-rank-results featurized-results)))
     ranked-results))
 
-(defun kanjidic-rank-results (featurized-results)
-  (-each featurized-results (lambda (r) (oset r :score (kanjidic-score-result r))))
+(defun jed-rank-results (featurized-results)
+  (-each featurized-results (lambda (r) (oset r :score (jed-score-result r))))
   (--sort (> (oref it :score) (oref other :score)) featurized-results))
 
-(defvar kanjidic-feature-file "./features")
+(defvar jed-feature-file "./features")
 
-(defun load-hash-table-from-file (path)
+(defun jed-load-hash-table-from-file (path)
   (let ((table (make-hash-table :test 'equal)))
     (with-temp-buffer
       (insert-file-contents path)
@@ -530,24 +534,24 @@
           (puthash key value table))))
     table))
 
-(defvar kanjidic-feature-values nil) ; load at runtime
+(defvar jed-feature-values nil) ; load at runtime
 
-(defun kanjidic-query-independent-featurization (results)
+(defun jed-query-independent-featurization (results)
   (-each results (lambda (r)
-                   (when (oref r :is-common) (sr-add-feature r 'is-common))
+                   (when (oref r :is-common) (jed-sr-add-feature r 'is-common))
                    (when (let ((freq (oref r :frequency-rank))) (and freq (> freq 35000)))
-                     (sr-add-feature r 'very-common))))
+                     (jed-sr-add-feature r 'very-common))))
   results)
 
-(defun kanjidic-score-result (featurized-result)
+(defun jed-score-result (featurized-result)
   (-sum (-map (lambda (f)
                 (pcase f
                   (`(,feature . ,feature-quantity)
-                   (* feature-quantity (gethash feature kanjidic-feature-values)))
-                  (feature (gethash feature kanjidic-feature-values))))
+                   (* feature-quantity (gethash feature jed-feature-values)))
+                  (feature (gethash feature jed-feature-values))))
               (oref featurized-result :ranking-features))))
 
-(defun kanjidic-combine-queries (all-results)
+(defun jed-combine-queries (all-results)
   (let ((by-id (-group-by (lambda (r) (oref r :vocab-id)) all-results)))
     (-map (lambda (group)
             (let ((example (cadr group))
@@ -556,21 +560,21 @@
               example))
           by-id)))
 
-(defun kanjidic-search-reading (reading-query)
+(defun jed-search-reading (reading-query)
   (let* ((do-prefix-search t)
          (reading (if (string-match-p "[$＄]$" reading-query)
                       (prog2 (setq do-prefix-search nil)
                           (substring reading-query 0 -1))
                     reading-query))
-         (exact-results (kanjidic-search-single-query
-                         (kanjidic-templating exact-kana-match-query reading))))
+         (exact-results (jed-search-single-query
+                         (jed-templating jed-kana-match-query reading))))
     (-each exact-results (lambda (r) (oset r :ranking-features '(exact-reading reading))))
     (append exact-results
-            (and do-prefix-search (kanjidic-search-reading-prefix reading)))))
+            (and do-prefix-search (jed-search-reading-prefix reading)))))
 
-(defun kanjidic-search-reading-prefix (reading-prefix)
-  (let ((results (kanjidic-search-single-query
-                  (kanjidic-templating exact-kana-match-query (concat reading-prefix "%"))))
+(defun jed-search-reading-prefix (reading-prefix)
+  (let ((results (jed-search-single-query
+                  (jed-templating jed-kana-match-query (concat reading-prefix "%"))))
         (q-len (length reading-prefix)))
     (-each results (lambda (r) (oset r :ranking-features
                             (list 'prefix-reading
@@ -579,21 +583,21 @@
                                                               q-len))))))
     results))
 
-(defun kanjidic-search-single-query (query)
-  (let* ((results (emacsql kanjidic-db query))
+(defun jed-search-single-query (query)
+  (let* ((results (emacsql jed-db query))
          (by-id (-group-by 'car results)))
-    (-map 'collect-database-search-result by-id)))
+    (-map 'jed-collect-database-sr by-id)))
 
-(defun collect-database-search-result (id-group)
+(defun jed-collect-database-sr (id-group)
   (let* ((example (cadr id-group))
-         (categories (get-vocab-categories (car id-group)))
-         (definitions (kanjidic-collect-definitions id-group)))
+         (categories (jed-get-vocab-categories (car id-group)))
+         (definitions (jed-collect-definitions id-group)))
     (pcase example
       (`(,id ,kanji ,kana ,furigana ,_ ,__ ,frequency ,is-common ,wiki-rank)
-       (kanjidic-search-result :vocab-id id
+       (jed-search-result :vocab-id id
                                :kanji-form kanji
                                :reading kana
-                               :furigana (resolve-furigana furigana kanji kana)
+                               :furigana (jed-resolve-furigana furigana kanji kana)
                                :definitions definitions
                                :frequency-rank frequency
                                :is-common (= 1 is-common)
@@ -601,10 +605,13 @@
                                :vocab-categories categories))
       (_ (error "bad database result")))))
 
-(defun kanjidic-collect-definitions (id-group)
+(defvar meaning-category-alias-path "./category-names")
+(defvar meaning-category-aliases nil) ; load at runtime
+
+(defun jed-collect-definitions (id-group)
   (let* ((texts (-select-column 5 (cdr id-group)))
          (ids (-select-column 4 (cdr id-group)))
-         (categories (get-definition-categories ids)))
+         (categories (jed-get-definition-categories ids)))
     (mapcar* (lambda (text id)
                (let* ((for-this-id (--map (and (= (car it) id) (cdr it)) categories))
                       (aliased (--map (gethash it meaning-category-aliases) (-flatten for-this-id)))
@@ -612,28 +619,24 @@
                  (list cat-str text)))
              texts ids)))
 
-(defvar meaning-category-alias-path "./category-names")
-
-(defvar meaning-category-aliases nil) ; load at runtime
-
-(defun resolve-furigana (furigana kanji kana)
+(defun jed-resolve-furigana (furigana kanji kana)
   (or furigana
       ;; Patch missing furigana for 3+ character 熟字訓
       (and kanji (let ((kanji-len (length kanji)))
                    (format "%d-%d:%s" 0 (- kanji-len 1) kana)))))
 
-(defun create-badges (result)
-  (-filter 'identity (funcall (-juxt 'common-badge
-                                    'wikirank-badge
-                                    'obsolete-reading-badge)
+(defun jed-create-badges (result)
+  (-filter 'identity (funcall (-juxt 'jed-common-badge
+                                    'jed-wikirank-badge
+                                    'jed-obsolete-reading-badge)
                              result)))
 
-(defun wikirank-badge (result)
+(defun jed-wikirank-badge (result)
   (let ((wiki-rank (oref result :wiki-rank)))
     (and wiki-rank
-         (list (format " W %dth most used " wiki-rank) 'badge-face))))
+         (list (format " W %dth most used " wiki-rank) 'jed-badge-face))))
 
-(defun common-badge (result)
+(defun jed-common-badge (result)
   (let* ((freq (oref result :frequency-rank))
          (rank (cond ((not freq) nil)
                      ((> freq 35000) "Very Common")
@@ -641,19 +644,19 @@
                      ((> freq 600)   "Unusual")
                      ((> freq 100)   "Rare")
                      (t nil))))
-    (and rank (list (format " 本 %s " rank) 'badge-face))))
+    (and rank (list (format " 本 %s " rank) 'jed-badge-face))))
 
-(defun obsolete-reading-badge (result)
+(defun jed-obsolete-reading-badge (result)
   (and (-contains? (oref result :vocab-categories) "ok")
-       (list "Outdated reading" 'obsolete-badge-face)))
+       (list "Outdated reading" 'jed-obsolete-badge-face)))
 
-(defun load-data-files ()
-;  (or meaning-category-aliases
-      (setq meaning-category-aliases (load-hash-table-from-file meaning-category-alias-path));)
-  (or kanjidic-feature-values
-      (setq kanjidic-feature-values (load-hash-table-from-file kanjidic-feature-file))))
+(defun jed-load-data-files ()
+  (or meaning-category-aliases
+      (setq meaning-category-aliases (jed-load-hash-table-from-file meaning-category-alias-path)))
+  (or jed-feature-values
+      (setq jed-feature-values (jed-load-hash-table-from-file jed-feature-file))))
 
 ;; Run
-(load-data-files)
-(probe-display-settings)
-(kanjidic-ui-setup)
+(jed-load-data-files)
+(jed-probe-display-settings)
+(jed-ui-setup)
