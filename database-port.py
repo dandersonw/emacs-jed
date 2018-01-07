@@ -4,6 +4,20 @@ import re
 import sexpdata
 
 
+# Different in that they enables full text search
+create_meanings_table = \
+                        """CREATE VIRTUAL TABLE [VocabMeaningSet] USING fts4 (
+                        [ID] integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        [Meaning] nvarchar(600));"""
+create_kanji_meanings_table = \
+                              """CREATE VIRTUAL TABLE [KanjiMeaningSet] USING fts4 (
+                              [ID] integer NOT NULL PRIMARY KEY AUTOINCREMENT,
+                              [Language] nvarchar(10),
+                              [Meaning] nvarchar(300) NOT NULL,
+                              [Kanji_ID] integer NOT NULL
+                              );"""
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("source")
@@ -43,9 +57,13 @@ def main():
 def convert_schema_entry(entry):
     r = dict()
     r["type"] = entry[0]
-    r["sql"] = entry[4]
     match = re.match(r"^CREATE (TABLE|INDEX) \[?([^ \]\(]+)\]? ?", entry[4])
     r["name"] = match.group(2)
+
+    table_creation_substitutions = {"VocabMeaningSet": create_meanings_table,
+                                    "KanjiMeaningSet": create_kanji_meanings_table}
+    r["sql"] = table_creation_substitutions.get(r["name"], entry[4])
+
     match = re.search(r"ON \[([^\]]+)\]", entry[4])
     if match:
         r["tbl_name"] = match.group(1)
