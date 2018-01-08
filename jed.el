@@ -150,17 +150,19 @@
       (jed-graphical-display-settings)
     (jed-terminal-display-settings)))
 
+(defun jed-default-font-width (c) 
+  (let ((window (selected-window))
+        (remapping face-remapping-alist))
+    (with-temp-buffer
+      (make-local-variable 'face-remapping-alist)
+      (setq face-remapping-alist remapping)
+      (set-window-buffer window (current-buffer))
+      (insert c)
+      (aref (aref (font-get-glyphs (font-at 1) 1 2) 0) 4))))
+
 (defun jed-graphical-display-settings ()
-  (defun jed-default-font-width (c) 
-    (let ((window (selected-window))
-          (remapping face-remapping-alist))
-      (with-temp-buffer
-        (make-local-variable 'face-remapping-alist)
-        (setq face-remapping-alist remapping)
-        (set-window-buffer window (current-buffer))
-        (insert c)
-        (aref (aref (font-get-glyphs (font-at 1) 1 2) 0) 4))))
-  (setq spc-per-kan (/ (float (jed-default-font-width "漢")) (default-font-width " ")))
+  (setq spc-per-kan (/ (float (jed-default-font-width "漢"))
+                       (jed-default-font-width " ")))
   (setq top-bottom-ratio 2.0))
 
 (defun jed-terminal-display-settings ()
