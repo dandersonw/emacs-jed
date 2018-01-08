@@ -373,17 +373,23 @@
       (insert (make-string padlen ? )))))
 
 (defvar jed-reading-field nil)
+(defvar jed-meaning-field nil)
 (defvar jed-result-list nil)
 
 (defun jed-ui-setup ()
   (kill-all-local-variables)
   (make-local-variable 'jed-reading-field)
+  (make-local-variable 'jed-meaning-field)
   (let ((inhibit-read-only t))
          (erase-buffer))
   (remove-overlays)
   (setq jed-reading-field (widget-create 'editable-field
                                      :size 30
                                      :format "Reading: %v"  
+                                     :action 'jed-handle-search))
+  (setq jed-meaning-field (widget-create 'editable-field
+                                     :size 30
+                                     :format "Meaning: %v"  
                                      :action 'jed-handle-search))
   (widget-insert (concat "\n" (make-string 50 ?-) "\n"))
   (setq jed-result-list (widget-create 'jed-sr-result-list
@@ -393,7 +399,8 @@
 
 (defun jed-handle-search (a b)
   (let* ((reading-query (widget-value jed-reading-field))
-         (search-results (jed-search reading-query))
+         (meaning-query (widget-value jed-meaning-field))
+         (search-results (jed-search reading-query meaning-query))
          (widget-data (-map 'jed-sr-to-widget-data search-results)))
     (widget-value-set jed-result-list widget-data))
   (widget-setup))
@@ -509,9 +516,10 @@
         ((-intersection jed-suboptimal-result-categories (oref search-result :vocab-categories)) 'shadow)
         (t nil)))
 
-(defun jed-search (reading-query)
+(defun jed-search (reading-query meaning-query)
   (let* ((reading-results (jed-search-reading reading-query))
-         (all-results (append reading-results))
+         (meaning-results (jed-search-meaning meaning-query))
+         (all-results (list reading-results meaning-results))
          (combined-results (jed-combine-queries all-results))
          (featurized-results (jed-query-independent-featurization combined-results))
          (ranked-results (jed-rank-results featurized-results)))
@@ -552,13 +560,20 @@
               (oref featurized-result :ranking-features))))
 
 (defun jed-combine-queries (all-results)
-  (let ((by-id (-group-by (lambda (r) (oref r :vocab-id)) all-results)))
-    (-map (lambda (group)
-            (let ((example (cadr group))
-                  (features (-distinct (-mapcat (lambda (r) (oref r :ranking-features)) (cdr group)))))
-              (oset example :ranking-features features)
-              example))
-          by-id)))
+  (let ((id-sets (-map (lambda (rs) (--map (oref it :vocab-id) rs)) all-results))
+        (id-counts (make-hash-table :test 'eq))
+        (target-count (length all-results))
+        (by-id (--group-by (oref it :vocab-id) (-flatten all-results))))
+    (dolist (id-set id-sets)
+      (dolist (id id-set)
+        (puthash id (+ 1 (gethash id id-counts 0)) id-counts)))
+    (-keep (lambda (group)
+             (when (= target-count (car group))
+               (let ((example (cadr group))
+                     (features (-distinct (-mapcat (lambda (r) (oref r :ranking-features)) (cdr group)))))
+                 (oset example :ranking-features features)
+                 example)))
+           by-id)))
 
 (defun jed-search-reading (reading-query)
   (let* ((do-prefix-search t)
@@ -582,6 +597,9 @@
                                   (cons 'extra-reading-len (- (length (oref r :reading))
                                                               q-len))))))
     results))
+
+(defun jed-search-meaning (meaning-query)
+  nil)
 
 (defun jed-search-single-query (query)
   (let* ((results (emacsql jed-db query))
