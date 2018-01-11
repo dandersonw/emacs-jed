@@ -43,9 +43,14 @@
   "todo"
   :group 'jed-faces)
 
+(defface jed-field-face '((t (:box t :inherit 'widget-field-face)))
+  "todo"
+  :group 'jed-faces)
+
 (defvar jed-display-text-width 15)
 
-(define-widget 'jed-display-text 'group "todo"
+(define-widget 'jed-display-text 'group
+  "Written form of a vocab item"
   :args (list 'string '(choice string symbol))
   :format "%v\n%p"
   :tag "display-text"
@@ -53,22 +58,26 @@
   :format-handler 'jed-pad-handler
   :value-create 'jed-display-text-value-create)
 
-(define-widget 'jed-meaning-categories 'choice "todo"
+(define-widget 'jed-meaning-categories 'choice
+  "Categories a meaning (and subsequent meanings) belong to"
   :args (list 'symbol 'string)
   :format "%v "
   :value-create 'jed-meaning-categories-value-create)
 
-(define-widget 'jed-definition 'list "todo"
+(define-widget 'jed-definition 'list
+  "Definitions for a vocabulary item"
   :args (list 'jed-meaning-categories 'jed-str)
   :format "%v\n"
   :tag "def"
   :value-create 'jed-definition-value-create)
 
-(define-widget 'jed-badge 'group "todo"
+(define-widget 'jed-badge 'group
+  "Widget indicating the presence of some notable property"
   :args (list 'jed-str 'symbol)
   :value-create 'jed-badge-value-create)
 
-(define-widget 'jed-badge-list 'editable-list "todo"
+(define-widget 'jed-badge-list 'editable-list
+  "Badges aggregation"
   :args (list 'jed-badge)
   :indent 1
   :format "%v\n"
@@ -79,11 +88,13 @@
   :tag "jed-str"
   :value-create (lambda (w) (insert (widget-value w))))
 
-(define-widget 'jed-sr-result-list 'editable-list "todo"
+(define-widget 'jed-sr-result-list 'editable-list
+  "Highest level widget"
   :format "%v\n"
   :entry-format "%v")
 
-(define-widget 'jed-deflist 'editable-list "todo"
+(define-widget 'jed-deflist 'editable-list
+  "Definition aggregation"
   :args (list 'jed-definition)
   :indent jed-display-text-width
   :format "%v"
@@ -93,7 +104,7 @@
 (define-widget 'jed-search-result 'group "todo"
   ;     (list display text / definitions / match-quality / kana)
   :args (list 'jed-display-text 'jed-badge-list 'jed-deflist 'symbol 'string)
-  :value-create 'jed-search-result-value-create)
+  :value-create 'jed-sr-value-create)
 
 (defmacro jed-match-widget-element (widget args value store)
   `(let (answer arg)
@@ -336,7 +347,7 @@
   (when window-system (jed-sr-separator-or-pad-line 'search-result-separator-face)))
 
 (defun jed-sr-pad-line ()
-  (jed-sr-separator-or-pad-line 'jed-search-result-pad-face))
+  (jed-sr-separator-or-pad-line 'jed-sr-pad-face))
 
 (defun jed-sr-separator-or-pad-line (face)
   (let* ((from (point))
@@ -388,11 +399,14 @@
   (setq jed-reading-field (widget-create 'editable-field
                                      :size 30
                                      :format "Reading: %v"  
-                                     :action 'jed-handle-search))
+                                     :action 'jed-handle-search
+                                     :value-face 'jed-field-face))
+  (widget-insert "\n")
   (setq jed-meaning-field (widget-create 'editable-field
                                      :size 30
                                      :format "Meaning: %v"  
-                                     :action 'jed-handle-search))
+                                     :action 'jed-handle-search
+                                     :value-face 'jed-field-face))
   (widget-insert (concat "\n" (make-string 50 ?-) "\n"))
   (setq jed-result-list (widget-create 'jed-sr-result-list
                                             'jed-search-result))
@@ -427,25 +441,25 @@
                  query)))
 
 (defvar jed-sr-fields [VocabSet:ID
-                              VocabSet:KanjiWriting
-                              VocabSet:KanaWriting
-                              VocabSet:Furigana
-                              VocabMeaningSet:ID
-                              VocabMeaningSet:Meaning
-                              VocabSet:FrequencyRank
-                              VocabSet:IsCommon
-                              VocabSet:WikiRank])
+                       VocabSet:KanjiWriting
+                       VocabSet:KanaWriting
+                       VocabSet:Furigana
+                       VocabMeaningSet:ID
+                       VocabMeaningSet:Meaning
+                       VocabSet:FrequencyRank
+                       VocabSet:IsCommon
+                       VocabSet:WikiRank])
 
 (defvar jed-kana-match-cond `(like VocabSet:KanaWriting $R0))
 
 (defvar jed-query-template `[:select ,jed-sr-fields
-                                  :from VocabSet
-                                  :join VocabEntityVocabMeaning
-                                  :on (= VocabSet:ID VocabEntityVocabMeaning:VocabEntity_ID)
-                                  :join VocabMeaningSet
-                                  :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID)
-                                  :where $R0
-                                  :limit 100])
+                             :from VocabSet
+                             :join VocabEntityVocabMeaning
+                             :on (= VocabSet:ID VocabEntityVocabMeaning:VocabEntity_ID)
+                             :join VocabMeaningSet
+                             :on (= VocabMeaningSet:ID VocabEntityVocabMeaning:Meanings_ID)
+                             :where $R0
+                             :limit 100])
 
 (defvar jed-kana-match-query (jed-templating jed-query-template jed-kana-match-cond))
 
@@ -519,9 +533,11 @@
         (t nil)))
 
 (defun jed-search (reading-query meaning-query)
-  (let* ((reading-results (jed-search-reading reading-query))
-         (meaning-results (jed-search-meaning meaning-query))
-         (all-results (list reading-results meaning-results))
+  (let* ((do-reading-query (> (length reading-query) 0))
+         (do-meaning-query (> (length meaning-query) 0))
+         (reading-results (when do-reading-query (list (jed-search-reading reading-query))))
+         (meaning-results (when do-meaning-query (list (jed-search-meaning meaning-query))))
+         (all-results (-flatten-n 1 (list reading-results meaning-results)))
          (combined-results (jed-combine-queries all-results))
          (featurized-results (jed-query-independent-featurization combined-results))
          (ranked-results (jed-rank-results featurized-results)))
@@ -562,15 +578,10 @@
               (oref featurized-result :ranking-features))))
 
 (defun jed-combine-queries (all-results)
-  (let ((id-sets (-map (lambda (rs) (--map (oref it :vocab-id) rs)) all-results))
-        (id-counts (make-hash-table :test 'eq))
-        (target-count (length all-results))
+  (let ((target-count (length all-results))
         (by-id (--group-by (oref it :vocab-id) (-flatten all-results))))
-    (dolist (id-set id-sets)
-      (dolist (id id-set)
-        (puthash id (+ 1 (gethash id id-counts 0)) id-counts)))
     (-keep (lambda (group)
-             (when (= target-count (car group))
+             (when (= target-count (- (length group) 1))
                (let ((example (cadr group))
                      (features (-distinct (-mapcat (lambda (r) (oref r :ranking-features)) (cdr group)))))
                  (oset example :ranking-features features)
