@@ -463,6 +463,14 @@
 
 (defvar jed-kana-match-query (jed-templating jed-query-template jed-kana-match-cond))
 
+;; Steps for relevant text search
+;; 1) change the database migration script to create a DB with FTS5
+;; 2) use it here
+
+(defvar jed-meaning-match-cond `(releva))
+
+(defvar jed-meaning-match-query (jed-templating jed-query-template meaning-match-cond))
+
 (defvar jed-suboptimal-result-categories '("ok" "oK" "arch"))
 
 (defun jed-vocab-category-id-from-short (name)

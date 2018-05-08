@@ -6,11 +6,11 @@ import sexpdata
 
 # Different in that they enables full text search
 create_meanings_table = \
-                        """CREATE VIRTUAL TABLE [VocabMeaningSet] USING fts4 (
+                        """CREATE VIRTUAL TABLE [VocabMeaningSet] USING fts5 (
                         [ID] integer NOT NULL PRIMARY KEY AUTOINCREMENT,
                         [Meaning] nvarchar(600));"""
 create_kanji_meanings_table = \
-                              """CREATE VIRTUAL TABLE [KanjiMeaningSet] USING fts4 (
+                              """CREATE VIRTUAL TABLE [KanjiMeaningSet] USING fts5 (
                               [ID] integer NOT NULL PRIMARY KEY AUTOINCREMENT,
                               [Language] nvarchar(10),
                               [Meaning] nvarchar(300) NOT NULL,
